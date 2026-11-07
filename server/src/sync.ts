@@ -1,31 +1,51 @@
-import type { AccountBase, Holding, RemovedTransaction, Security, Transaction, TransactionStream } from 'plaid';
-import type { Institution } from '@rocket/shared';
-import { decrypt, encrypt } from './crypto.ts';
-import { db, transaction } from './db.ts';
-import { plaid, toPlaidError } from './plaid.ts';
-import { getInstitution } from './queries.ts';
+import type {
+  AccountBase,
+  Holding,
+  RemovedTransaction,
+  Security,
+  Transaction,
+  TransactionStream,
+} from "plaid";
+import type { AccountType, Institution } from "@rocket/shared";
+import { and, eq, inArray, notInArray } from "drizzle-orm";
+import { decrypt, encrypt } from "./crypto.ts";
+import { chunks, db, excluded } from "./db.ts";
+import { plaid, toPlaidError } from "./plaid.ts";
+import { getInstitution, today } from "./queries.ts";
+import {
+  accounts,
+  balanceSnapshots,
+  holdings,
+  items,
+  recurring,
+  transactions,
+} from "./schema.ts";
 
-interface ItemRow {
-  id: string;
-  access_token_enc: string;
-  cursor: string | null;
-}
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
-export async function linkItem(publicToken: string, institutionName: string): Promise<Institution> {
-  const { data } = await plaid.itemPublicTokenExchange({ public_token: publicToken });
-  db.prepare(
-    `INSERT INTO items (id, access_token_enc, institution_name, products) VALUES (:id, :token, :name, '[]')
-     ON CONFLICT(id) DO UPDATE SET access_token_enc = excluded.access_token_enc`,
-  ).run({ id: data.item_id, token: encrypt(data.access_token), name: institutionName });
+export async function linkItem(
+  publicToken: string,
+  institutionName: string,
+): Promise<Institution> {
+  const { data } = await plaid.itemPublicTokenExchange({
+    public_token: publicToken,
+  });
+  const accessTokenEnc = encrypt(data.access_token);
+  db.insert(items)
+    .values({ id: data.item_id, accessTokenEnc, institutionName })
+    .onConflictDoUpdate({ target: items.id, set: { accessTokenEnc } })
+    .run();
   return syncItem(data.item_id);
 }
 
+function getItem(itemId: string) {
+  const item = db.select().from(items).where(eq(items.id, itemId)).get();
+  if (!item) throw new NotFoundError(`Unknown item ${itemId}`);
+  return item;
+}
+
 export function accessTokenFor(itemId: string): string {
-  const row = db.prepare('SELECT access_token_enc FROM items WHERE id = ?').get(itemId) as
-    | { access_token_enc: string }
-    | undefined;
-  if (!row) throw new NotFoundError(`Unknown item ${itemId}`);
-  return decrypt(row.access_token_enc);
+  return decrypt(getItem(itemId).accessTokenEnc);
 }
 
 export async function removeItem(itemId: string): Promise<void> {
@@ -33,14 +53,14 @@ export async function removeItem(itemId: string): Promise<void> {
     await plaid.itemRemove({ access_token: accessTokenFor(itemId) });
   } catch (err) {
     const code = toPlaidError(err)?.code;
-    if (code !== 'ITEM_NOT_FOUND' && code !== 'INVALID_ACCESS_TOKEN') throw err;
+    if (code !== "ITEM_NOT_FOUND" && code !== "INVALID_ACCESS_TOKEN") throw err;
   }
-  db.prepare('DELETE FROM items WHERE id = ?').run(itemId);
+  db.delete(items).where(eq(items.id, itemId)).run();
 }
 
 export async function syncAll(): Promise<Institution[]> {
-  const ids = (db.prepare('SELECT id FROM items').all() as { id: string }[]).map((r) => r.id);
-  return Promise.all(ids.map(syncItem));
+  const ids = db.select({ id: items.id }).from(items).all();
+  return Promise.all(ids.map((r) => syncItem(r.id)));
 }
 
 /**
@@ -49,42 +69,54 @@ export async function syncAll(): Promise<Institution[]> {
  * didn't store. Rerunning is always safe.
  */
 export async function syncItem(itemId: string): Promise<Institution> {
-  const item = db.prepare('SELECT id, access_token_enc, cursor FROM items WHERE id = ?').get(itemId) as
-    | ItemRow
-    | undefined;
-  if (!item) throw new NotFoundError(`Unknown item ${itemId}`);
-  const accessToken = decrypt(item.access_token_enc);
+  const item = getItem(itemId);
+  const accessToken = decrypt(item.accessTokenEnc);
 
   try {
-    const { data: itemData } = await plaid.itemGet({ access_token: accessToken });
-    const products = itemData.item.products ?? itemData.item.billed_products;
-    const has = (p: string) => products.includes(p as never);
+    const { data: itemData } = await plaid.itemGet({
+      access_token: accessToken,
+    });
+    const products: string[] =
+      itemData.item.products ?? itemData.item.billed_products;
+    const has = (p: string) => products.includes(p);
 
-    const [accounts, txns, streams, holdings] = await Promise.all([
-      plaid.accountsGet({ access_token: accessToken }).then((r) => r.data.accounts),
-      has('transactions') ? fetchTransactions(accessToken, item.cursor) : null,
-      has('transactions') ? fetchRecurring(accessToken) : null,
-      has('investments') ? fetchHoldings(accessToken) : null,
+    const [plaidAccounts, txns, streams, investments] = await Promise.all([
+      plaid
+        .accountsGet({ access_token: accessToken })
+        .then((r) => r.data.accounts),
+      has("transactions") ? fetchTransactions(accessToken, item.cursor) : null,
+      has("transactions") ? fetchRecurring(accessToken) : null,
+      has("investments") ? fetchHoldings(accessToken) : null,
     ]);
 
-    transaction(() => {
-      writeAccounts(itemId, accounts);
-      if (txns) writeTransactions(itemId, txns);
-      if (streams) writeRecurring(itemId, streams);
-      if (holdings) writeHoldings(accounts, holdings);
-      db.prepare(
-        `UPDATE items SET products = :products, status = 'ok', error = NULL, last_synced_at = datetime('now')
-         WHERE id = :id`,
-      ).run({ id: itemId, products: JSON.stringify(products) });
+    db.transaction((tx) => {
+      writeAccounts(tx, itemId, plaidAccounts);
+      if (txns) writeTransactions(tx, itemId, txns);
+      if (streams) writeRecurring(tx, itemId, streams);
+      if (investments) writeHoldings(tx, plaidAccounts, investments);
+      tx.update(items)
+        .set({
+          products,
+          status: "ok",
+          error: null,
+          lastSyncedAt: new Date().toISOString(),
+        })
+        .where(eq(items.id, itemId))
+        .run();
     });
   } catch (err) {
     const plaidError = toPlaidError(err);
     if (!plaidError) throw err;
-    db.prepare('UPDATE items SET status = :status, error = :error WHERE id = :id').run({
-      id: itemId,
-      status: plaidError.code === 'ITEM_LOGIN_REQUIRED' ? 'login_required' : 'error',
-      error: plaidError.message,
-    });
+    db.update(items)
+      .set({
+        status:
+          plaidError.code === "ITEM_LOGIN_REQUIRED"
+            ? "login_required"
+            : "error",
+        error: plaidError.message,
+      })
+      .where(eq(items.id, itemId))
+      .run();
   }
   return getInstitution(itemId);
 }
@@ -98,9 +130,17 @@ interface TransactionChanges {
   cursor: string;
 }
 
-async function fetchTransactions(accessToken: string, startCursor: string | null): Promise<TransactionChanges> {
+async function fetchTransactions(
+  accessToken: string,
+  startCursor: string | null,
+): Promise<TransactionChanges> {
   restart: for (;;) {
-    const changes: TransactionChanges = { added: [], modified: [], removed: [], cursor: startCursor ?? '' };
+    const changes: TransactionChanges = {
+      added: [],
+      modified: [],
+      removed: [],
+      cursor: startCursor ?? "",
+    };
     for (;;) {
       try {
         const { data } = await plaid.transactionsSync({
@@ -114,7 +154,11 @@ async function fetchTransactions(accessToken: string, startCursor: string | null
         changes.cursor = data.next_cursor;
         if (!data.has_more) return changes;
       } catch (err) {
-        if (toPlaidError(err)?.code === 'TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION') continue restart;
+        if (
+          toPlaidError(err)?.code ===
+          "TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION"
+        )
+          continue restart;
         throw err;
       }
     }
@@ -122,134 +166,213 @@ async function fetchTransactions(accessToken: string, startCursor: string | null
 }
 
 /** Recurring detection needs transaction history Plaid may still be pulling right after Link. */
-async function fetchRecurring(accessToken: string): Promise<TransactionStream[] | null> {
+async function fetchRecurring(
+  accessToken: string,
+): Promise<TransactionStream[] | null> {
   try {
-    const { data } = await plaid.transactionsRecurringGet({ access_token: accessToken });
+    const { data } = await plaid.transactionsRecurringGet({
+      access_token: accessToken,
+    });
     return [...data.inflow_streams, ...data.outflow_streams];
   } catch (err) {
-    if (toPlaidError(err)?.code === 'PRODUCT_NOT_READY') return null;
+    if (toPlaidError(err)?.code === "PRODUCT_NOT_READY") return null;
     throw err;
   }
 }
 
-async function fetchHoldings(accessToken: string): Promise<{ holdings: Holding[]; securities: Security[] }> {
-  const { data } = await plaid.investmentsHoldingsGet({ access_token: accessToken });
+async function fetchHoldings(
+  accessToken: string,
+): Promise<{ holdings: Holding[]; securities: Security[] }> {
+  const { data } = await plaid.investmentsHoldingsGet({
+    access_token: accessToken,
+  });
   return { holdings: data.holdings, securities: data.securities };
 }
 
-const knownAccountTypes = new Set(['depository', 'credit', 'loan', 'investment']);
+const knownAccountTypes = new Set<string>([
+  "depository",
+  "credit",
+  "loan",
+  "investment",
+]);
 
-function writeAccounts(itemId: string, accounts: AccountBase[]) {
-  const upsert = db.prepare(
-    `INSERT INTO accounts (id, item_id, name, mask, type, subtype, current_balance, available_balance, currency)
-     VALUES (:id, :itemId, :name, :mask, :type, :subtype, :current, :available, :currency)
-     ON CONFLICT(id) DO UPDATE SET name = excluded.name, mask = excluded.mask, type = excluded.type,
-       subtype = excluded.subtype, current_balance = excluded.current_balance,
-       available_balance = excluded.available_balance, currency = excluded.currency`,
+function writeAccounts(tx: Tx, itemId: string, plaidAccounts: AccountBase[]) {
+  if (plaidAccounts.length === 0) return;
+  tx.insert(accounts)
+    .values(
+      plaidAccounts.map((a) => ({
+        id: a.account_id,
+        itemId,
+        name: a.official_name ?? a.name,
+        mask: a.mask,
+        type: (knownAccountTypes.has(a.type) ? a.type : "other") as AccountType,
+        subtype: a.subtype ?? null,
+        currentBalance: a.balances.current,
+        availableBalance: a.balances.available,
+        currency: a.balances.iso_currency_code ?? "USD",
+      })),
+    )
+    .onConflictDoUpdate({
+      target: accounts.id,
+      set: excluded(accounts, [
+        "name",
+        "mask",
+        "type",
+        "subtype",
+        "currentBalance",
+        "availableBalance",
+        "currency",
+      ]),
+    })
+    .run();
+
+  const snapshots = plaidAccounts.flatMap((a) =>
+    a.balances.current == null
+      ? []
+      : [
+          {
+            accountId: a.account_id,
+            date: today(),
+            balance: a.balances.current,
+          },
+        ],
   );
-  const snapshot = db.prepare(
-    `INSERT INTO balance_snapshots (account_id, date, balance) VALUES (?, date('now'), ?)
-     ON CONFLICT(account_id, date) DO UPDATE SET balance = excluded.balance`,
-  );
-  for (const a of accounts) {
-    upsert.run({
-      id: a.account_id,
-      itemId,
-      name: a.official_name ?? a.name,
-      mask: a.mask,
-      type: knownAccountTypes.has(a.type) ? a.type : 'other',
-      subtype: a.subtype ?? null,
-      current: a.balances.current,
-      available: a.balances.available,
-      currency: a.balances.iso_currency_code ?? 'USD',
-    });
-    if (a.balances.current != null) snapshot.run(a.account_id, a.balances.current);
-  }
+  if (snapshots.length === 0) return;
+  tx.insert(balanceSnapshots)
+    .values(snapshots)
+    .onConflictDoUpdate({
+      target: [balanceSnapshots.accountId, balanceSnapshots.date],
+      set: excluded(balanceSnapshots, ["balance"]),
+    })
+    .run();
 }
 
-function writeTransactions(itemId: string, { added, modified, removed, cursor }: TransactionChanges) {
-  const upsert = db.prepare(
-    `INSERT INTO transactions (id, account_id, amount, currency, date, name, merchant_name, logo_url, plaid_category, pending)
-     VALUES (:id, :accountId, :amount, :currency, :date, :name, :merchant, :logo, :category, :pending)
-     ON CONFLICT(id) DO UPDATE SET account_id = excluded.account_id, amount = excluded.amount,
-       currency = excluded.currency, date = excluded.date, name = excluded.name,
-       merchant_name = excluded.merchant_name, logo_url = excluded.logo_url,
-       plaid_category = excluded.plaid_category, pending = excluded.pending`,
-  );
-  for (const t of [...added, ...modified]) {
-    upsert.run({
-      id: t.transaction_id,
-      accountId: t.account_id,
-      amount: t.amount,
-      currency: t.iso_currency_code ?? 'USD',
-      date: t.date,
-      name: t.name,
-      merchant: t.merchant_name ?? null,
-      logo: t.logo_url ?? null,
-      category: t.personal_finance_category?.primary ?? 'OTHER',
-      pending: t.pending ? 1 : 0,
-    });
+function writeTransactions(
+  tx: Tx,
+  itemId: string,
+  { added, modified, removed, cursor }: TransactionChanges,
+) {
+  const rows = [...added, ...modified].map((t) => ({
+    id: t.transaction_id,
+    accountId: t.account_id,
+    amount: t.amount,
+    currency: t.iso_currency_code ?? "USD",
+    date: t.date,
+    name: t.name,
+    merchantName: t.merchant_name ?? null,
+    logoUrl: t.logo_url ?? null,
+    plaidCategory: t.personal_finance_category?.primary ?? "OTHER",
+    pending: t.pending,
+  }));
+  for (const chunk of chunks(rows)) {
+    tx.insert(transactions)
+      .values(chunk)
+      .onConflictDoUpdate({
+        target: transactions.id,
+        set: excluded(transactions, [
+          "accountId",
+          "amount",
+          "currency",
+          "date",
+          "name",
+          "merchantName",
+          "logoUrl",
+          "plaidCategory",
+          "pending",
+        ]),
+      })
+      .run();
   }
-  const remove = db.prepare('DELETE FROM transactions WHERE id = ?');
-  for (const r of removed) if (r.transaction_id) remove.run(r.transaction_id);
-  db.prepare('UPDATE items SET cursor = ? WHERE id = ?').run(cursor, itemId);
+  const removedIds = removed.flatMap((r) =>
+    r.transaction_id ? [r.transaction_id] : [],
+  );
+  for (const chunk of chunks(removedIds)) {
+    tx.delete(transactions).where(inArray(transactions.id, chunk)).run();
+  }
+  tx.update(items).set({ cursor }).where(eq(items.id, itemId)).run();
 }
 
-function writeRecurring(itemId: string, streams: TransactionStream[]) {
-  const upsert = db.prepare(
-    `INSERT INTO recurring (id, item_id, account_id, direction, name, merchant_name, category, frequency,
-       average_amount, last_amount, last_date, next_date, is_active)
-     VALUES (:id, :itemId, :accountId, :direction, :name, :merchant, :category, :frequency,
-       :average, :last, :lastDate, :nextDate, :active)
-     ON CONFLICT(id) DO UPDATE SET account_id = excluded.account_id, name = excluded.name,
-       merchant_name = excluded.merchant_name, category = excluded.category, frequency = excluded.frequency,
-       average_amount = excluded.average_amount, last_amount = excluded.last_amount,
-       last_date = excluded.last_date, next_date = excluded.next_date, is_active = excluded.is_active`,
-  );
+function writeRecurring(tx: Tx, itemId: string, streams: TransactionStream[]) {
   // Plaid reports inflow amounts as negative; store magnitudes and carry the sign in `direction`.
-  for (const s of streams) {
-    upsert.run({
-      id: s.stream_id,
-      itemId,
-      accountId: s.account_id,
-      direction: s.average_amount.amount! < 0 ? 'inflow' : 'outflow',
-      name: s.description,
-      merchant: s.merchant_name ?? null,
-      category: s.personal_finance_category?.primary ?? 'OTHER',
-      frequency: s.frequency,
-      average: Math.abs(s.average_amount.amount ?? 0),
-      last: Math.abs(s.last_amount.amount ?? 0),
-      lastDate: s.last_date,
-      nextDate: s.predicted_next_date ?? null,
-      active: s.is_active ? 1 : 0,
-    });
+  const rows = streams.map((s) => ({
+    id: s.stream_id,
+    itemId,
+    accountId: s.account_id,
+    direction: (s.average_amount.amount! < 0 ? "inflow" : "outflow") as
+      "inflow" | "outflow",
+    name: s.description,
+    merchantName: s.merchant_name ?? null,
+    category: s.personal_finance_category?.primary ?? "OTHER",
+    frequency: s.frequency,
+    averageAmount: Math.abs(s.average_amount.amount ?? 0),
+    lastAmount: Math.abs(s.last_amount.amount ?? 0),
+    lastDate: s.last_date,
+    nextDate: s.predicted_next_date ?? null,
+    isActive: s.is_active,
+  }));
+  for (const chunk of chunks(rows)) {
+    tx.insert(recurring)
+      .values(chunk)
+      .onConflictDoUpdate({
+        target: recurring.id,
+        set: excluded(recurring, [
+          "accountId",
+          "name",
+          "merchantName",
+          "category",
+          "frequency",
+          "averageAmount",
+          "lastAmount",
+          "lastDate",
+          "nextDate",
+          "isActive",
+        ]),
+      })
+      .run();
   }
-  const ids = streams.map((s) => s.stream_id);
-  db.prepare(
-    `DELETE FROM recurring WHERE item_id = ? AND id NOT IN (SELECT value FROM json_each(?))`,
-  ).run(itemId, JSON.stringify(ids));
+  tx.delete(recurring)
+    .where(
+      and(
+        eq(recurring.itemId, itemId),
+        notInArray(
+          recurring.id,
+          rows.map((r) => r.id),
+        ),
+      ),
+    )
+    .run();
 }
 
-function writeHoldings(accounts: AccountBase[], { holdings, securities }: { holdings: Holding[]; securities: Security[] }) {
+function writeHoldings(
+  tx: Tx,
+  plaidAccounts: AccountBase[],
+  {
+    holdings: plaidHoldings,
+    securities,
+  }: { holdings: Holding[]; securities: Security[] },
+) {
   const securityById = new Map(securities.map((s) => [s.security_id, s]));
-  const accountIds = JSON.stringify(accounts.map((a) => a.account_id));
-  db.prepare('DELETE FROM holdings WHERE account_id IN (SELECT value FROM json_each(?))').run(accountIds);
-  const insert = db.prepare(
-    `INSERT INTO holdings (account_id, security_id, name, ticker, type, quantity, price, value, cost_basis)
-     VALUES (:accountId, :securityId, :name, :ticker, :type, :quantity, :price, :value, :costBasis)`,
-  );
-  for (const h of holdings) {
+  tx.delete(holdings)
+    .where(
+      inArray(
+        holdings.accountId,
+        plaidAccounts.map((a) => a.account_id),
+      ),
+    )
+    .run();
+  const rows = plaidHoldings.map((h) => {
     const security = securityById.get(h.security_id);
-    insert.run({
+    return {
       accountId: h.account_id,
       securityId: h.security_id,
-      name: security?.name ?? 'Unknown security',
+      name: security?.name ?? "Unknown security",
       ticker: security?.ticker_symbol ?? null,
       type: security?.type ?? null,
       quantity: h.quantity,
       price: h.institution_price,
       value: h.institution_value,
       costBasis: h.cost_basis ?? null,
-    });
-  }
+    };
+  });
+  for (const chunk of chunks(rows)) tx.insert(holdings).values(chunk).run();
 }

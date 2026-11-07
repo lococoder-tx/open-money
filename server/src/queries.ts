@@ -5,45 +5,80 @@ import {
   type CategoryAmount,
   type Holding,
   type Institution,
-  type ItemStatus,
   type RecurringStream,
   type Summary,
   type TransactionPage,
-} from '@rocket/shared';
-import { db } from './db.ts';
+} from "@rocket/shared";
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  gte,
+  like,
+  lt,
+  lte,
+  notInArray,
+  or,
+  sql,
+} from "drizzle-orm";
+import { db } from "./db.ts";
+import {
+  accounts,
+  balanceSnapshots,
+  budgets,
+  holdings,
+  items,
+  recurring,
+  transactions,
+} from "./schema.ts";
 
-const NON_SPENDING_SQL = `(${NON_SPENDING_CATEGORIES.map((c) => `'${c}'`).join(', ')})`;
-const CATEGORY_SQL = 'COALESCE(t.user_category, t.plaid_category)';
+const category = sql<string>`coalesce(${transactions.userCategory}, ${transactions.plaidCategory})`;
+
+const institutionFields = {
+  itemId: items.id,
+  name: items.institutionName,
+  status: items.status,
+  error: items.error,
+  products: items.products,
+  lastSyncedAt: items.lastSyncedAt,
+};
 
 export function listInstitutions(): Institution[] {
-  const rows = db.prepare('SELECT * FROM items ORDER BY created_at').all() as Record<string, unknown>[];
-  return rows.map(toInstitution);
+  return db
+    .select(institutionFields)
+    .from(items)
+    .orderBy(items.createdAt)
+    .all();
 }
 
 export function getInstitution(itemId: string): Institution {
-  return toInstitution(db.prepare('SELECT * FROM items WHERE id = ?').get(itemId) as Record<string, unknown>);
-}
-
-function toInstitution(r: Record<string, unknown>): Institution {
-  return {
-    itemId: r.id as string,
-    name: r.institution_name as string,
-    status: r.status as ItemStatus,
-    error: r.error as string | null,
-    products: JSON.parse(r.products as string),
-    lastSyncedAt: r.last_synced_at as string | null,
-  };
+  return db
+    .select(institutionFields)
+    .from(items)
+    .where(eq(items.id, itemId))
+    .get()!;
 }
 
 export function listAccounts(): Account[] {
   return db
-    .prepare(
-      `SELECT a.id, a.item_id AS itemId, i.institution_name AS institutionName, a.name, a.mask, a.type,
-         a.subtype, a.current_balance AS currentBalance, a.available_balance AS availableBalance, a.currency
-       FROM accounts a JOIN items i ON i.id = a.item_id
-       ORDER BY i.institution_name, a.type, a.name`,
-    )
-    .all() as unknown as Account[];
+    .select({
+      id: accounts.id,
+      itemId: accounts.itemId,
+      institutionName: items.institutionName,
+      name: accounts.name,
+      mask: accounts.mask,
+      type: accounts.type,
+      subtype: accounts.subtype,
+      currentBalance: accounts.currentBalance,
+      availableBalance: accounts.availableBalance,
+      currency: accounts.currency,
+    })
+    .from(accounts)
+    .innerJoin(items, eq(items.id, accounts.itemId))
+    .orderBy(items.institutionName, accounts.type, accounts.name)
+    .all();
 }
 
 export interface TransactionFilter {
@@ -57,127 +92,165 @@ export interface TransactionFilter {
 }
 
 export function listTransactions(f: TransactionFilter): TransactionPage {
-  const where: string[] = [];
-  const params: Record<string, string | number> = {};
-  if (f.search) {
-    where.push(`(t.name LIKE :search OR t.merchant_name LIKE :search)`);
-    params.search = `%${f.search}%`;
-  }
-  if (f.category) {
-    where.push(`${CATEGORY_SQL} = :category`);
-    params.category = f.category;
-  }
-  if (f.accountId) {
-    where.push('t.account_id = :accountId');
-    params.accountId = f.accountId;
-  }
-  if (f.start) {
-    where.push('t.date >= :start');
-    params.start = f.start;
-  }
-  if (f.end) {
-    where.push('t.date <= :end');
-    params.end = f.end;
-  }
-  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  const where = and(
+    f.search
+      ? or(
+          like(transactions.name, `%${f.search}%`),
+          like(transactions.merchantName, `%${f.search}%`),
+        )
+      : undefined,
+    f.category ? eq(category, f.category) : undefined,
+    f.accountId ? eq(transactions.accountId, f.accountId) : undefined,
+    f.start ? gte(transactions.date, f.start) : undefined,
+    f.end ? lte(transactions.date, f.end) : undefined,
+  );
 
-  const { total } = db.prepare(`SELECT COUNT(*) AS total FROM transactions t ${whereSql}`).get(params) as {
-    total: number;
-  };
+  const { total } = db
+    .select({ total: count() })
+    .from(transactions)
+    .where(where)
+    .get()!;
   const rows = db
-    .prepare(
-      `SELECT t.id, t.account_id AS accountId, a.name AS accountName, t.amount, t.currency, t.date, t.name,
-         t.merchant_name AS merchantName, t.logo_url AS logoUrl, ${CATEGORY_SQL} AS category, t.pending
-       FROM transactions t JOIN accounts a ON a.id = t.account_id
-       ${whereSql}
-       ORDER BY t.date DESC, t.id
-       LIMIT :limit OFFSET :offset`,
-    )
-    .all({ ...params, limit: f.limit, offset: f.offset }) as Record<string, unknown>[];
+    .select({
+      id: transactions.id,
+      accountId: transactions.accountId,
+      accountName: accounts.name,
+      amount: transactions.amount,
+      currency: transactions.currency,
+      date: transactions.date,
+      name: transactions.name,
+      merchantName: transactions.merchantName,
+      logoUrl: transactions.logoUrl,
+      category,
+      pending: transactions.pending,
+    })
+    .from(transactions)
+    .innerJoin(accounts, eq(accounts.id, transactions.accountId))
+    .where(where)
+    .orderBy(desc(transactions.date), transactions.id)
+    .limit(f.limit)
+    .offset(f.offset)
+    .all();
 
-  return {
-    total,
-    transactions: rows.map((r) => ({ ...r, pending: r.pending === 1 })) as unknown as TransactionPage['transactions'],
-  };
+  return { total, transactions: rows };
 }
 
-export function setTransactionCategory(id: string, category: string | null): boolean {
-  return db.prepare('UPDATE transactions SET user_category = ? WHERE id = ?').run(category, id).changes > 0;
+export function setTransactionCategory(
+  id: string,
+  userCategory: string | null,
+): boolean {
+  return (
+    db
+      .update(transactions)
+      .set({ userCategory })
+      .where(eq(transactions.id, id))
+      .run().changes > 0
+  );
 }
 
 export function listCategories(): string[] {
-  const rows = db
-    .prepare(
-      `SELECT DISTINCT ${CATEGORY_SQL} AS category FROM transactions t
-       UNION SELECT category FROM budgets ORDER BY category`,
-    )
-    .all() as { category: string }[];
-  return rows.map((r) => r.category);
+  const used = db.selectDistinct({ category }).from(transactions).all();
+  const budgeted = db
+    .select({ category: budgets.category })
+    .from(budgets)
+    .all();
+  return [...new Set([...used, ...budgeted].map((r) => r.category))].sort();
 }
 
 export function listHoldings(): Holding[] {
   return db
-    .prepare(
-      `SELECT h.account_id AS accountId, a.name AS accountName, h.security_id AS securityId, h.name, h.ticker,
-         h.type, h.quantity, h.price, h.value, h.cost_basis AS costBasis
-       FROM holdings h JOIN accounts a ON a.id = h.account_id
-       ORDER BY h.value DESC`,
-    )
-    .all() as unknown as Holding[];
+    .select({
+      accountId: holdings.accountId,
+      accountName: accounts.name,
+      securityId: holdings.securityId,
+      name: holdings.name,
+      ticker: holdings.ticker,
+      type: holdings.type,
+      quantity: holdings.quantity,
+      price: holdings.price,
+      value: holdings.value,
+      costBasis: holdings.costBasis,
+    })
+    .from(holdings)
+    .innerJoin(accounts, eq(accounts.id, holdings.accountId))
+    .orderBy(desc(holdings.value))
+    .all();
 }
 
-const RECURRING_SELECT = `
-  SELECT id, account_id AS accountId, direction, name, merchant_name AS merchantName, category, frequency,
-    average_amount AS averageAmount, last_amount AS lastAmount, last_date AS lastDate, next_date AS nextDate,
-    is_active AS isActive, hidden
-  FROM recurring`;
-
-function toRecurring(r: Record<string, unknown>): RecurringStream {
-  return { ...r, isActive: r.isActive === 1, hidden: r.hidden === 1 } as unknown as RecurringStream;
-}
+const recurringFields = {
+  id: recurring.id,
+  accountId: recurring.accountId,
+  direction: recurring.direction,
+  name: recurring.name,
+  merchantName: recurring.merchantName,
+  category: recurring.category,
+  frequency: recurring.frequency,
+  averageAmount: recurring.averageAmount,
+  lastAmount: recurring.lastAmount,
+  lastDate: recurring.lastDate,
+  nextDate: recurring.nextDate,
+  isActive: recurring.isActive,
+  hidden: recurring.hidden,
+};
 
 export function listRecurring(): RecurringStream[] {
-  const rows = db.prepare(`${RECURRING_SELECT} ORDER BY is_active DESC, average_amount DESC`).all();
-  return (rows as Record<string, unknown>[]).map(toRecurring);
+  return db
+    .select(recurringFields)
+    .from(recurring)
+    .orderBy(desc(recurring.isActive), desc(recurring.averageAmount))
+    .all();
 }
 
 export function setRecurringHidden(id: string, hidden: boolean): boolean {
-  return db.prepare('UPDATE recurring SET hidden = ? WHERE id = ?').run(hidden ? 1 : 0, id).changes > 0;
+  return (
+    db.update(recurring).set({ hidden }).where(eq(recurring.id, id)).run()
+      .changes > 0
+  );
 }
 
 function spendingByCategory(start: string, end: string): CategoryAmount[] {
+  const amount = sql<number>`sum(${transactions.amount})`;
   return db
-    .prepare(
-      `SELECT ${CATEGORY_SQL} AS category, SUM(t.amount) AS amount
-       FROM transactions t
-       WHERE t.date >= ? AND t.date < ? AND ${CATEGORY_SQL} NOT IN ${NON_SPENDING_SQL}
-       GROUP BY 1 HAVING SUM(t.amount) > 0 ORDER BY 2 DESC`,
+    .select({ category, amount })
+    .from(transactions)
+    .where(
+      and(
+        gte(transactions.date, start),
+        lt(transactions.date, end),
+        notInArray(category, NON_SPENDING_CATEGORIES),
+      ),
     )
-    .all(start, end) as unknown as CategoryAmount[];
+    .groupBy(category)
+    .having(sql`${amount} > 0`)
+    .orderBy(desc(amount))
+    .all();
 }
 
 export function listBudgets(): Budget[] {
   const { start, end } = monthRange(0);
-  const spent = new Map(spendingByCategory(start, end).map((c) => [c.category, c.amount]));
-  const rows = db.prepare('SELECT category, monthly_limit AS monthlyLimit FROM budgets ORDER BY category').all() as {
-    category: string;
-    monthlyLimit: number;
-  }[];
-  return rows.map((b) => ({ ...b, spent: spent.get(b.category) ?? 0 }));
+  const spent = new Map(
+    spendingByCategory(start, end).map((c) => [c.category, c.amount]),
+  );
+  return db
+    .select()
+    .from(budgets)
+    .orderBy(budgets.category)
+    .all()
+    .map((b) => ({ ...b, spent: spent.get(b.category) ?? 0 }));
 }
 
 export function upsertBudget(category: string, monthlyLimit: number) {
-  db.prepare(
-    `INSERT INTO budgets (category, monthly_limit) VALUES (?, ?)
-     ON CONFLICT(category) DO UPDATE SET monthly_limit = excluded.monthly_limit`,
-  ).run(category, monthlyLimit);
+  db.insert(budgets)
+    .values({ category, monthlyLimit })
+    .onConflictDoUpdate({ target: budgets.category, set: { monthlyLimit } })
+    .run();
 }
 
 export function deleteBudget(category: string) {
-  db.prepare('DELETE FROM budgets WHERE category = ?').run(category);
+  db.delete(budgets).where(eq(budgets.category, category)).run();
 }
 
-const LIABILITY_TYPES = new Set(['credit', 'loan']);
+const LIABILITY_TYPES = new Set(["credit", "loan"]);
 
 export function getSummary(): Summary {
   let assets = 0;
@@ -190,30 +263,45 @@ export function getSummary(): Summary {
   const thisMonth = monthRange(0);
   const lastMonth = monthRange(-1);
   const byCategory = spendingByCategory(thisMonth.start, thisMonth.end);
-  const total = (cs: CategoryAmount[]) => cs.reduce((sum, c) => sum + c.amount, 0);
+  const total = (cs: CategoryAmount[]) =>
+    cs.reduce((sum, c) => sum + c.amount, 0);
   const { income } = db
-    .prepare(
-      `SELECT COALESCE(-SUM(t.amount), 0) AS income FROM transactions t
-       WHERE t.date >= ? AND t.date < ? AND ${CATEGORY_SQL} = 'INCOME'`,
+    .select({
+      income: sql<number>`coalesce(-sum(${transactions.amount}), 0)`,
+    })
+    .from(transactions)
+    .where(
+      and(
+        gte(transactions.date, thisMonth.start),
+        lt(transactions.date, thisMonth.end),
+        eq(category, "INCOME"),
+      ),
     )
-    .get(thisMonth.start, thisMonth.end) as { income: number };
+    .get()!;
 
-  const today = new Date().toISOString().slice(0, 10);
-  const upcoming = (
-    db
-      .prepare(
-        `${RECURRING_SELECT} WHERE direction = 'outflow' AND is_active = 1 AND hidden = 0 AND next_date >= ?
-         ORDER BY next_date LIMIT 6`,
-      )
-      .all(today) as Record<string, unknown>[]
-  ).map(toRecurring);
+  const upcoming = db
+    .select(recurringFields)
+    .from(recurring)
+    .where(
+      and(
+        eq(recurring.direction, "outflow"),
+        eq(recurring.isActive, true),
+        eq(recurring.hidden, false),
+        gte(recurring.nextDate, today()),
+      ),
+    )
+    .orderBy(asc(recurring.nextDate))
+    .limit(6)
+    .all();
 
   return {
     netWorth: assets - liabilities,
     assets,
     liabilities,
     monthSpending: total(byCategory),
-    lastMonthSpending: total(spendingByCategory(lastMonth.start, lastMonth.end)),
+    lastMonthSpending: total(
+      spendingByCategory(lastMonth.start, lastMonth.end),
+    ),
     monthIncome: income,
     spendingByCategory: byCategory,
     netWorthHistory: netWorthHistory(),
@@ -222,17 +310,25 @@ export function getSummary(): Summary {
 }
 
 /** Each date's net worth carries every account's most recent balance forward. */
-function netWorthHistory(): Summary['netWorthHistory'] {
+function netWorthHistory(): Summary["netWorthHistory"] {
   const rows = db
-    .prepare(
-      `SELECT s.date, s.account_id AS accountId, s.balance, a.type FROM balance_snapshots s
-       JOIN accounts a ON a.id = s.account_id ORDER BY s.date`,
-    )
-    .all() as { date: string; accountId: string; balance: number; type: string }[];
+    .select({
+      date: balanceSnapshots.date,
+      accountId: balanceSnapshots.accountId,
+      balance: balanceSnapshots.balance,
+      type: accounts.type,
+    })
+    .from(balanceSnapshots)
+    .innerJoin(accounts, eq(accounts.id, balanceSnapshots.accountId))
+    .orderBy(balanceSnapshots.date)
+    .all();
   const latest = new Map<string, number>();
-  const history: Summary['netWorthHistory'] = [];
+  const history: Summary["netWorthHistory"] = [];
   for (const r of rows) {
-    latest.set(r.accountId, LIABILITY_TYPES.has(r.type) ? -r.balance : r.balance);
+    latest.set(
+      r.accountId,
+      LIABILITY_TYPES.has(r.type) ? -r.balance : r.balance,
+    );
     const value = [...latest.values()].reduce((a, b) => a + b, 0);
     if (history.at(-1)?.date === r.date) history.at(-1)!.value = value;
     else history.push({ date: r.date, value });
@@ -240,11 +336,19 @@ function netWorthHistory(): Summary['netWorthHistory'] {
   return history;
 }
 
+export function today(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
 function monthRange(offset: number): { start: string; end: string } {
   const now = new Date();
   const fmt = (d: Date) => d.toISOString().slice(0, 10);
   return {
-    start: fmt(new Date(Date.UTC(now.getFullYear(), now.getMonth() + offset, 1))),
-    end: fmt(new Date(Date.UTC(now.getFullYear(), now.getMonth() + offset + 1, 1))),
+    start: fmt(
+      new Date(Date.UTC(now.getFullYear(), now.getMonth() + offset, 1)),
+    ),
+    end: fmt(
+      new Date(Date.UTC(now.getFullYear(), now.getMonth() + offset + 1, 1)),
+    ),
   };
 }

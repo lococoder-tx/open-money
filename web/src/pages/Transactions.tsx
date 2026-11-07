@@ -1,15 +1,15 @@
-import { useEffect, useState } from 'react';
-import type { Account, Transaction, TransactionPage } from '@rocket/shared';
-import { api, useApi } from '../api.ts';
-import { categoryLabel, money, shortDate } from '../format.ts';
+import { useEffect, useState } from "react";
+import type { Account, Transaction, TransactionPage } from "@rocket/shared";
+import { api, useApi } from "../api.ts";
+import { categoryLabel, money, shortDate } from "../format.ts";
 
 const PAGE_SIZE = 50;
 
 export function Transactions() {
-  const [search, setSearch] = useState('');
-  const [debounced, setDebounced] = useState('');
-  const [category, setCategory] = useState('');
-  const [accountId, setAccountId] = useState('');
+  const [search, setSearch] = useState("");
+  const [debounced, setDebounced] = useState("");
+  const [category, setCategory] = useState("");
+  const [accountId, setAccountId] = useState("");
   const [page, setPage] = useState(0);
 
   useEffect(() => {
@@ -18,21 +18,30 @@ export function Transactions() {
   }, [search]);
   useEffect(() => setPage(0), [debounced, category, accountId]);
 
-  const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(page * PAGE_SIZE) });
-  if (debounced) params.set('search', debounced);
-  if (category) params.set('category', category);
-  if (accountId) params.set('accountId', accountId);
+  const params = new URLSearchParams({
+    limit: String(PAGE_SIZE),
+    offset: String(page * PAGE_SIZE),
+  });
+  if (debounced) params.set("search", debounced);
+  if (category) params.set("category", category);
+  if (accountId) params.set("accountId", accountId);
 
-  const { data, error, reload } = useApi<TransactionPage>(`/transactions?${params}`);
-  const categories = useApi<string[]>('/categories');
-  const accounts = useApi<Account[]>('/accounts');
+  const { data, error, reload } = useApi<TransactionPage>(
+    `/transactions?${params}`,
+  );
+  const categories = useApi<string[]>("/categories");
+  const accounts = useApi<Account[]>("/accounts");
   const pages = data ? Math.ceil(data.total / PAGE_SIZE) : 0;
 
   return (
     <div className="stack">
       <h1>Transactions</h1>
       <div className="row filters">
-        <input placeholder="Search merchant or description" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <input
+          placeholder="Search merchant or description"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
         <select value={category} onChange={(e) => setCategory(e.target.value)}>
           <option value="">All categories</option>
           {categories.data?.map((c) => (
@@ -41,7 +50,10 @@ export function Transactions() {
             </option>
           ))}
         </select>
-        <select value={accountId} onChange={(e) => setAccountId(e.target.value)}>
+        <select
+          value={accountId}
+          onChange={(e) => setAccountId(e.target.value)}
+        >
           <option value="">All accounts</option>
           {accounts.data?.map((a) => (
             <option key={a.id} value={a.id}>
@@ -65,22 +77,37 @@ export function Transactions() {
           </thead>
           <tbody>
             {data?.transactions.map((t) => (
-              <Row key={t.id} txn={t} categories={categories.data ?? []} onChange={reload} />
+              <Row
+                key={t.id}
+                txn={t}
+                categories={categories.data ?? []}
+                onChange={reload}
+              />
             ))}
           </tbody>
         </table>
-        {data?.total === 0 && <p className="muted pad">No transactions match.</p>}
+        {data?.total === 0 && (
+          <p className="muted pad">No transactions match.</p>
+        )}
       </div>
 
       {pages > 1 && (
         <div className="row">
-          <button className="btn" disabled={page === 0} onClick={() => setPage(page - 1)}>
+          <button
+            className="btn"
+            disabled={page === 0}
+            onClick={() => setPage(page - 1)}
+          >
             Previous
           </button>
           <span className="muted">
             Page {page + 1} of {pages}
           </span>
-          <button className="btn" disabled={page + 1 >= pages} onClick={() => setPage(page + 1)}>
+          <button
+            className="btn"
+            disabled={page + 1 >= pages}
+            onClick={() => setPage(page + 1)}
+          >
             Next
           </button>
         </div>
@@ -89,10 +116,23 @@ export function Transactions() {
   );
 }
 
-function Row({ txn, categories, onChange }: { txn: Transaction; categories: string[]; onChange: () => void }) {
-  const options = categories.includes(txn.category) ? categories : [...categories, txn.category];
+function Row({
+  txn,
+  categories,
+  onChange,
+}: {
+  txn: Transaction;
+  categories: string[];
+  onChange: () => void;
+}) {
+  const options = categories.includes(txn.category)
+    ? categories
+    : [...categories, txn.category];
   const recategorize = async (category: string) => {
-    await api(`/transactions/${txn.id}`, { method: 'PATCH', body: { category } });
+    await api(`/transactions/${txn.id}`, {
+      method: "PATCH",
+      body: { category },
+    });
     onChange();
   };
 
@@ -101,7 +141,13 @@ function Row({ txn, categories, onChange }: { txn: Transaction; categories: stri
       <td className="muted nowrap">{shortDate(txn.date)}</td>
       <td>
         <div className="merchant">
-          {txn.logoUrl ? <img src={txn.logoUrl} alt="" /> : <span className="logo-fallback">{(txn.merchantName ?? txn.name)[0]}</span>}
+          {txn.logoUrl ? (
+            <img src={txn.logoUrl} alt="" />
+          ) : (
+            <span className="logo-fallback">
+              {(txn.merchantName ?? txn.name)[0]}
+            </span>
+          )}
           <span>
             {txn.merchantName ?? txn.name}
             {txn.pending && <span className="badge">Pending</span>}
@@ -109,7 +155,11 @@ function Row({ txn, categories, onChange }: { txn: Transaction; categories: stri
         </div>
       </td>
       <td>
-        <select className="inline" value={txn.category} onChange={(e) => recategorize(e.target.value)}>
+        <select
+          className="inline"
+          value={txn.category}
+          onChange={(e) => recategorize(e.target.value)}
+        >
           {options.map((c) => (
             <option key={c} value={c}>
               {categoryLabel(c)}
@@ -118,7 +168,9 @@ function Row({ txn, categories, onChange }: { txn: Transaction; categories: stri
         </select>
       </td>
       <td className="muted">{txn.accountName}</td>
-      <td className={`num ${txn.amount < 0 ? 'positive' : ''}`}>{money(-txn.amount, txn.currency)}</td>
+      <td className={`num ${txn.amount < 0 ? "positive" : ""}`}>
+        {money(-txn.amount, txn.currency)}
+      </td>
     </tr>
   );
 }

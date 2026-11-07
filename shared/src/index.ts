@@ -4,16 +4,21 @@
 export type ISODate = string;
 
 /** Plaid categories for money moving between your own accounts or arriving as pay. Never counted as spending. */
-export const NON_SPENDING_CATEGORIES = ['INCOME', 'TRANSFER_IN', 'TRANSFER_OUT', 'LOAN_PAYMENTS'];
+export const NON_SPENDING_CATEGORIES = [
+  "INCOME",
+  "TRANSFER_IN",
+  "TRANSFER_OUT",
+  "LOAN_PAYMENTS",
+];
 
 /**
  * Which Plaid products a connection requires. Investment-only institutions
  * (Principal, many 401k providers) don't support `transactions`, so requiring it
  * would hide them from Link.
  */
-export type LinkKind = 'banking' | 'investments';
+export type LinkKind = "banking" | "investments";
 
-export type ItemStatus = 'ok' | 'login_required' | 'error';
+export type ItemStatus = "ok" | "login_required" | "error";
 
 export interface Institution {
   itemId: string;
@@ -24,7 +29,8 @@ export interface Institution {
   lastSyncedAt: string | null;
 }
 
-export type AccountType = 'depository' | 'credit' | 'loan' | 'investment' | 'other';
+export type AccountType =
+  "depository" | "credit" | "loan" | "investment" | "other";
 
 export interface Account {
   id: string;
@@ -72,7 +78,7 @@ export interface Holding {
   costBasis: number | null;
 }
 
-export type RecurringDirection = 'inflow' | 'outflow';
+export type RecurringDirection = "inflow" | "outflow";
 
 export interface RecurringStream {
   id: string;

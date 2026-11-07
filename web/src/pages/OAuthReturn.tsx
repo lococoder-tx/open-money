@@ -1,6 +1,6 @@
-import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { readPendingLink, usePlaidFlow } from '../components/PlaidLink.tsx';
+import { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { readPendingLink, usePlaidFlow } from "../components/PlaidLink.tsx";
 
 export function OAuthReturn() {
   const navigate = useNavigate();
@@ -9,7 +9,7 @@ export function OAuthReturn() {
 
   usePlaidFlow(pending, {
     receivedRedirectUri: window.location.href,
-    onFinish: (err) => (err ? setError(err) : navigate('/accounts')),
+    onFinish: (err) => (err ? setError(err) : navigate("/accounts")),
   });
 
   if (!pending) {
@@ -19,5 +19,13 @@ export function OAuthReturn() {
       </div>
     );
   }
-  return <div className="card">{error ? <span className="error-text">{error}</span> : 'Finishing connection…'}</div>;
+  return (
+    <div className="card">
+      {error ? (
+        <span className="error-text">{error}</span>
+      ) : (
+        "Finishing connection…"
+      )}
+    </div>
+  );
 }

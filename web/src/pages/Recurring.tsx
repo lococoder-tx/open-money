@@ -1,7 +1,7 @@
-import { useState } from 'react';
-import type { RecurringStream } from '@rocket/shared';
-import { api, useApi } from '../api.ts';
-import { frequencyLabel, money, shortDate } from '../format.ts';
+import { useState } from "react";
+import type { RecurringStream } from "@rocket/shared";
+import { api, useApi } from "../api.ts";
+import { frequencyLabel, money, shortDate } from "../format.ts";
 
 const MONTHLY_FACTOR: Record<string, number> = {
   WEEKLY: 52 / 12,
@@ -12,21 +12,27 @@ const MONTHLY_FACTOR: Record<string, number> = {
 };
 
 export function Recurring() {
-  const { data, error, reload } = useApi<RecurringStream[]>('/recurring');
+  const { data, error, reload } = useApi<RecurringStream[]>("/recurring");
   const [showHidden, setShowHidden] = useState(false);
 
   if (error) return <div className="card error-text">{error}</div>;
   if (!data) return <div className="muted">Loading…</div>;
 
   const visible = data.filter((r) => r.isActive && (showHidden || !r.hidden));
-  const outflows = visible.filter((r) => r.direction === 'outflow');
-  const inflows = visible.filter((r) => r.direction === 'inflow');
+  const outflows = visible.filter((r) => r.direction === "outflow");
+  const inflows = visible.filter((r) => r.direction === "inflow");
   const monthlyCost = outflows
     .filter((r) => !r.hidden)
-    .reduce((sum, r) => sum + r.averageAmount * (MONTHLY_FACTOR[r.frequency] ?? 0), 0);
+    .reduce(
+      (sum, r) => sum + r.averageAmount * (MONTHLY_FACTOR[r.frequency] ?? 0),
+      0,
+    );
 
   const toggleHidden = async (r: RecurringStream) => {
-    await api(`/recurring/${r.id}`, { method: 'PATCH', body: { hidden: !r.hidden } });
+    await api(`/recurring/${r.id}`, {
+      method: "PATCH",
+      body: { hidden: !r.hidden },
+    });
     reload();
   };
 
@@ -35,27 +41,52 @@ export function Recurring() {
       <div className="row between">
         <h1>Recurring</h1>
         <label className="row small">
-          <input type="checkbox" checked={showHidden} onChange={(e) => setShowHidden(e.target.checked)} />
+          <input
+            type="checkbox"
+            checked={showHidden}
+            onChange={(e) => setShowHidden(e.target.checked)}
+          />
           Show hidden
         </label>
       </div>
       <div className="card stat">
         <div className="muted">Subscriptions & bills, per month</div>
         <div className="stat-value">{money(monthlyCost)}</div>
-        <div className="muted small">{outflows.filter((r) => !r.hidden).length} active charges</div>
+        <div className="muted small">
+          {outflows.filter((r) => !r.hidden).length} active charges
+        </div>
       </div>
-      <StreamTable title="Subscriptions & bills" streams={outflows} onToggle={toggleHidden} />
-      <StreamTable title="Recurring income" streams={inflows} onToggle={toggleHidden} />
+      <StreamTable
+        title="Subscriptions & bills"
+        streams={outflows}
+        onToggle={toggleHidden}
+      />
+      <StreamTable
+        title="Recurring income"
+        streams={inflows}
+        onToggle={toggleHidden}
+      />
     </div>
   );
 }
 
-function StreamTable({ title, streams, onToggle }: { title: string; streams: RecurringStream[]; onToggle: (r: RecurringStream) => void }) {
+function StreamTable({
+  title,
+  streams,
+  onToggle,
+}: {
+  title: string;
+  streams: RecurringStream[];
+  onToggle: (r: RecurringStream) => void;
+}) {
   return (
     <section className="card flush">
       <h2 className="pad">{title}</h2>
       {streams.length === 0 ? (
-        <p className="muted pad">Nothing detected yet. Plaid needs a few months of history to spot patterns.</p>
+        <p className="muted pad">
+          Nothing detected yet. Plaid needs a few months of history to spot
+          patterns.
+        </p>
       ) : (
         <table>
           <thead>
@@ -70,15 +101,17 @@ function StreamTable({ title, streams, onToggle }: { title: string; streams: Rec
           </thead>
           <tbody>
             {streams.map((r) => (
-              <tr key={r.id} className={r.hidden ? 'dimmed' : ''}>
+              <tr key={r.id} className={r.hidden ? "dimmed" : ""}>
                 <td>{r.merchantName ?? r.name}</td>
                 <td className="muted">{frequencyLabel(r.frequency)}</td>
                 <td className="muted">{shortDate(r.lastDate)}</td>
-                <td className="muted">{r.nextDate ? shortDate(r.nextDate) : '—'}</td>
+                <td className="muted">
+                  {r.nextDate ? shortDate(r.nextDate) : "—"}
+                </td>
                 <td className="num">{money(r.lastAmount)}</td>
                 <td className="num">
                   <button className="btn small" onClick={() => onToggle(r)}>
-                    {r.hidden ? 'Unhide' : 'Hide'}
+                    {r.hidden ? "Unhide" : "Hide"}
                   </button>
                 </td>
               </tr>

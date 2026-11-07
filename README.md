@@ -5,7 +5,7 @@ A personal finance dashboard in the style of Rocket Money. It connects bank, cre
 TypeScript across the stack:
 
 - `shared/` holds the API types that both sides import.
-- `server/` is Express 5 with the Plaid Node SDK and SQLite (Node's built-in `node:sqlite`). Plaid access tokens are encrypted with AES-256-GCM before they are stored.
+- `server/` is Express 5 with the Plaid Node SDK, and SQLite through Drizzle ORM and `better-sqlite3`. Plaid access tokens are encrypted with AES-256-GCM before they are stored.
 - `web/` is React 19 with Vite, React Router, Recharts, and `react-plaid-link`.
 
 ## Setup
@@ -26,12 +26,12 @@ For production, run `npm run build && npm start` and open http://127.0.0.1:3001.
 
 ## Connecting accounts
 
-There are two connect buttons, because Plaid only shows institutions that support every *required* product:
+There are two connect buttons, because Plaid only shows institutions that support every _required_ product:
 
-| Button | Required | Optional | Use for |
-| --- | --- | --- | --- |
-| Bank or card | `transactions` | `investments` | Checking, savings, credit cards, Fidelity cash management |
-| Investments | `investments` | `transactions` | Fidelity brokerage, Principal 401(k), IRAs |
+| Button       | Required       | Optional       | Use for                                                   |
+| ------------ | -------------- | -------------- | --------------------------------------------------------- |
+| Bank or card | `transactions` | `investments`  | Checking, savings, credit cards, Fidelity cash management |
+| Investments  | `investments`  | `transactions` | Fidelity brokerage, Principal 401(k), IRAs                |
 
 Fidelity and most large banks use OAuth. Link sends you to the institution and then back to `/oauth`, which finishes the connection. When a login expires, the account shows **Reconnect**, which opens Link in update mode.
 
@@ -49,6 +49,16 @@ Real Fidelity and Principal data needs Plaid **production** access. Request it i
 All Plaid data is fetched first and then written in one database transaction. A failed sync never moves the cursor past data that was not stored, so retrying is always safe.
 
 Spending leaves out `INCOME`, `TRANSFER_IN`, `TRANSFER_OUT`, and `LOAN_PAYMENTS`, so credit card payments and transfers between your own accounts don't count twice.
+
+## Changing the database schema
+
+The tables are defined in `server/src/schema.ts`. The server applies any pending migrations from `server/drizzle/` when it starts.
+
+1. Edit `server/src/schema.ts`.
+2. Run `npm run db:generate -w server`. This writes a new SQL migration to `server/drizzle/`. Review it and commit it.
+3. Restart the server.
+
+To browse the data, run `npm run db:studio -w server`.
 
 ## Limitations
 
