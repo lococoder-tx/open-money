@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "typecheck": "tsc -p .",
+    "typecheck": "tsc -p . && node scripts/check-stack.mjs",
     "visual": "node scripts/visual.mjs",
     "behavior": "node scripts/behavior.mjs"
   },
