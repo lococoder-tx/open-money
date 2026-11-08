@@ -15,7 +15,8 @@ import { categoryLabel, money, shortDate } from "../format.ts";
 
 export function Dashboard() {
   const institutions = useApi<Institution[]>("/institutions");
-  const { data, error } = useApi<Summary>("/summary");
+  const { data, ...summary } = useApi<Summary>("/summary");
+  const error = summary.error ?? institutions.error;
 
   if (error) return <div className="card error-text">{error}</div>;
   if (!data || !institutions.data) return <div className="muted">Loading…</div>;
