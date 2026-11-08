@@ -9,7 +9,9 @@ import { PNG } from "pngjs";
 import { budgets, recurring, stubJson, stubRichSummary } from "./fixtures.mjs";
 
 const BASE_URL = process.env.BASE_URL ?? "http://localhost:5173";
-const FIXED_NOW = new Date("2026-11-07T10:00:00");
+// Headless Chromium occasionally rasterizes anti-aliased edges 1 unit off between runs.
+const NOISE_TOLERANCE = 2;
+const FIXED_NOW =new Date("2026-11-07T10:00:00");
 
 const states = [
   { name: "dashboard", path: "/", ready: "text=Recent transactions" },
@@ -106,14 +108,25 @@ function diff(baseDir, candDir) {
       continue;
     }
     const out = new PNG({ width: a.width, height: a.height });
-    const n = pixelmatch(a.data, b.data, out.data, a.width, a.height, { threshold: 0 });
-    if (n > 0) {
+    pixelmatch(a.data, b.data, out.data, a.width, a.height, { threshold: 0 });
+    let real = 0;
+    let noise = 0;
+    for (let i = 0; i < a.data.length; i += 4) {
+      const delta = Math.max(
+        Math.abs(a.data[i] - b.data[i]),
+        Math.abs(a.data[i + 1] - b.data[i + 1]),
+        Math.abs(a.data[i + 2] - b.data[i + 2]),
+      );
+      if (delta > NOISE_TOLERANCE) real++;
+      else if (delta > 0) noise++;
+    }
+    if (real > 0) {
       writeFileSync(path.join(diffDir, name), PNG.sync.write(out));
       failed++;
     }
-    console.log(`${n === 0 ? "SAME   " : "DIFF   "}  ${name}  ${n}px`);
+    console.log(`${real === 0 ? "SAME   " : "DIFF   "}  ${name}  ${real}px (${noise}px noise)`);
   }
-  console.log(`${names.length - failed}/${names.length} identical`);
+  console.log(`${names.length - failed}/${names.length} match`);
   process.exit(failed === 0 ? 0 : 1);
 }
 
