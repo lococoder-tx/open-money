@@ -7,6 +7,7 @@ import {
   type LinkTokenCreateRequest,
 } from "plaid";
 import type { LinkKind } from "@rocket/shared";
+import { z } from "zod";
 import { env } from "./env.ts";
 
 export const plaid = new PlaidApi(
@@ -58,24 +59,24 @@ export interface PlaidError {
   message: string;
 }
 
+const optionalMessage = z.string().nullish().catch(undefined);
+const plaidErrorResponse = z.object({
+  response: z.object({
+    data: z.object({
+      error_code: z.string(),
+      display_message: optionalMessage,
+      error_message: optionalMessage,
+    }),
+  }),
+});
+
 export function toPlaidError(err: unknown): PlaidError | null {
-  const data = (
-    err as {
-      response?: {
-        data?: {
-          error_code?: unknown;
-          display_message?: unknown;
-          error_message?: unknown;
-        };
-      };
-    }
-  )?.response?.data;
-  if (typeof data?.error_code !== "string") return null;
-  const message = [data.display_message, data.error_message].find(
-    (m) => typeof m === "string",
-  );
+  const parsed = plaidErrorResponse.safeParse(err);
+  if (!parsed.success) return null;
+  const { error_code, display_message, error_message } =
+    parsed.data.response.data;
   return {
-    code: data.error_code,
-    message: (message as string | undefined) ?? data.error_code,
+    code: error_code,
+    message: display_message ?? error_message ?? error_code,
   };
 }

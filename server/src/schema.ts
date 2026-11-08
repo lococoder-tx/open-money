@@ -6,10 +6,11 @@ import {
   sqliteTable,
   text,
 } from "drizzle-orm/sqlite-core";
-import type {
-  AccountType,
-  ItemStatus,
-  RecurringDirection,
+import {
+  ACCOUNT_TYPES,
+  ITEM_STATUSES,
+  RECURRING_DIRECTIONS,
+  RECURRING_FREQUENCIES,
 } from "@rocket/shared";
 
 export const items = sqliteTable("items", {
@@ -18,7 +19,7 @@ export const items = sqliteTable("items", {
   institutionName: text().notNull(),
   products: text({ mode: "json" }).$type<string[]>().notNull().default([]),
   cursor: text(),
-  status: text().$type<ItemStatus>().notNull().default("ok"),
+  status: text({ enum: ITEM_STATUSES }).notNull().default("ok"),
   error: text(),
   lastSyncedAt: text(),
   createdAt: text()
@@ -33,7 +34,7 @@ export const accounts = sqliteTable("accounts", {
     .references(() => items.id, { onDelete: "cascade" }),
   name: text().notNull(),
   mask: text(),
-  type: text().$type<AccountType>().notNull(),
+  type: text({ enum: ACCOUNT_TYPES }).notNull(),
   subtype: text(),
   currentBalance: real(),
   availableBalance: real(),
@@ -84,11 +85,11 @@ export const recurring = sqliteTable("recurring", {
     .notNull()
     .references(() => items.id, { onDelete: "cascade" }),
   accountId: text().notNull(),
-  direction: text().$type<RecurringDirection>().notNull(),
+  direction: text({ enum: RECURRING_DIRECTIONS }).notNull(),
   name: text().notNull(),
   merchantName: text(),
   category: text().notNull(),
-  frequency: text().notNull(),
+  frequency: text({ enum: RECURRING_FREQUENCIES }).notNull(),
   averageAmount: real().notNull(),
   lastAmount: real().notNull(),
   lastDate: text().notNull(),

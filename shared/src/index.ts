@@ -16,9 +16,14 @@ export const NON_SPENDING_CATEGORIES = [
  * (Principal, many 401k providers) don't support `transactions`, so requiring it
  * would hide them from Link.
  */
-export type LinkKind = "banking" | "investments";
+export const LINK_KINDS = ["banking", "investments"] as const;
+export type LinkKind = (typeof LINK_KINDS)[number];
 
-export type ItemStatus = "ok" | "login_required" | "error";
+/** `itemId` reopens Link in update mode to repair that connection's login. */
+export type LinkTarget = { kind: LinkKind } | { itemId: string };
+
+export const ITEM_STATUSES = ["ok", "login_required", "error"] as const;
+export type ItemStatus = (typeof ITEM_STATUSES)[number];
 
 export interface Institution {
   itemId: string;
@@ -29,8 +34,14 @@ export interface Institution {
   lastSyncedAt: string | null;
 }
 
-export type AccountType =
-  "depository" | "credit" | "loan" | "investment" | "other";
+export const ACCOUNT_TYPES = [
+  "depository",
+  "credit",
+  "loan",
+  "investment",
+  "other",
+] as const;
+export type AccountType = (typeof ACCOUNT_TYPES)[number];
 
 export interface Account {
   id: string;
@@ -40,6 +51,7 @@ export interface Account {
   mask: string | null;
   type: AccountType;
   subtype: string | null;
+  /** Plaid's convention: positive for every type, so a credit or loan balance is money owed. */
   currentBalance: number | null;
   availableBalance: number | null;
   currency: string;
@@ -78,7 +90,18 @@ export interface Holding {
   costBasis: number | null;
 }
 
-export type RecurringDirection = "inflow" | "outflow";
+export const RECURRING_DIRECTIONS = ["inflow", "outflow"] as const;
+export type RecurringDirection = (typeof RECURRING_DIRECTIONS)[number];
+
+export const RECURRING_FREQUENCIES = [
+  "UNKNOWN",
+  "WEEKLY",
+  "BIWEEKLY",
+  "SEMI_MONTHLY",
+  "MONTHLY",
+  "ANNUALLY",
+] as const;
+export type RecurringFrequency = (typeof RECURRING_FREQUENCIES)[number];
 
 export interface RecurringStream {
   id: string;
@@ -87,7 +110,8 @@ export interface RecurringStream {
   name: string;
   merchantName: string | null;
   category: string;
-  frequency: string;
+  frequency: RecurringFrequency;
+  /** Magnitudes. The sign lives in `direction`, unlike `Transaction.amount`. */
   averageAmount: number;
   lastAmount: number;
   lastDate: ISODate;

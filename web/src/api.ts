@@ -6,8 +6,6 @@ import {
   useState,
 } from "react";
 
-export class ApiError extends Error {}
-
 export async function api<T = void>(
   path: string,
   init?: { method?: string; body?: unknown },
@@ -21,12 +19,23 @@ export async function api<T = void>(
     body: init?.body === undefined ? undefined : JSON.stringify(init.body),
   });
   if (!res.ok) {
-    const body = (await res.json().catch(() => null)) as {
-      error?: string;
-    } | null;
-    throw new ApiError(body?.error ?? `Request failed (${res.status})`);
+    const body: unknown = await res.json().catch(() => null);
+    throw new Error(
+      typeof body === "object" &&
+        body !== null &&
+        "error" in body &&
+        typeof body.error === "string"
+        ? body.error
+        : `Request failed (${res.status})`,
+    );
   }
+  // The server and this client compile against the same @rocket/shared types,
+  // so the response is trusted rather than re-parsed here.
   return res.status === 204 ? (undefined as T) : ((await res.json()) as T);
+}
+
+export function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
 
 /** Bumped after any sync or link so every mounted query refetches. */
@@ -36,20 +45,14 @@ export const DataVersion = createContext<{ version: number; bump: () => void }>(
 
 export function useApi<T>(path: string) {
   const { version } = useContext(DataVersion);
-  const [state, setState] = useState<{
-    data?: T;
-    error?: string;
-    loading: boolean;
-  }>({ loading: true });
+  const [state, setState] = useState<{ data?: T; error?: string }>({});
   const [local, setLocal] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
-    setState((s) => ({ ...s, loading: true }));
     api<T>(path).then(
-      (data) => !cancelled && setState({ data, loading: false }),
-      (err: Error) =>
-        !cancelled && setState({ error: err.message, loading: false }),
+      (data) => !cancelled && setState({ data }),
+      (err: unknown) => !cancelled && setState({ error: errorMessage(err) }),
     );
     return () => {
       cancelled = true;

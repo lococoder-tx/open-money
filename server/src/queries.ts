@@ -1,6 +1,7 @@
 import {
   NON_SPENDING_CATEGORIES,
   type Account,
+  type AccountType,
   type Budget,
   type CategoryAmount,
   type Holding,
@@ -208,7 +209,12 @@ export function setRecurringHidden(id: string, hidden: boolean): boolean {
   );
 }
 
-function spendingByCategory(start: string, end: string): CategoryAmount[] {
+interface DateRange {
+  start: string;
+  end: string;
+}
+
+function spendingByCategory({ start, end }: DateRange): CategoryAmount[] {
   const amount = sql<number>`sum(${transactions.amount})`;
   return db
     .select({ category, amount })
@@ -227,9 +233,8 @@ function spendingByCategory(start: string, end: string): CategoryAmount[] {
 }
 
 export function listBudgets(): Budget[] {
-  const { start, end } = monthRange(0);
   const spent = new Map(
-    spendingByCategory(start, end).map((c) => [c.category, c.amount]),
+    spendingByCategory(monthRange(0)).map((c) => [c.category, c.amount]),
   );
   return db
     .select()
@@ -250,7 +255,7 @@ export function deleteBudget(category: string) {
   db.delete(budgets).where(eq(budgets.category, category)).run();
 }
 
-const LIABILITY_TYPES = new Set(["credit", "loan"]);
+const LIABILITY_TYPES: ReadonlySet<AccountType> = new Set(["credit", "loan"]);
 
 export function getSummary(): Summary {
   let assets = 0;
@@ -262,7 +267,7 @@ export function getSummary(): Summary {
 
   const thisMonth = monthRange(0);
   const lastMonth = monthRange(-1);
-  const byCategory = spendingByCategory(thisMonth.start, thisMonth.end);
+  const byCategory = spendingByCategory(thisMonth);
   const total = (cs: CategoryAmount[]) =>
     cs.reduce((sum, c) => sum + c.amount, 0);
   const { income } = db
@@ -299,9 +304,7 @@ export function getSummary(): Summary {
     assets,
     liabilities,
     monthSpending: total(byCategory),
-    lastMonthSpending: total(
-      spendingByCategory(lastMonth.start, lastMonth.end),
-    ),
+    lastMonthSpending: total(spendingByCategory(lastMonth)),
     monthIncome: income,
     spendingByCategory: byCategory,
     netWorthHistory: netWorthHistory(),
@@ -330,25 +333,25 @@ function netWorthHistory(): Summary["netWorthHistory"] {
       LIABILITY_TYPES.has(r.type) ? -r.balance : r.balance,
     );
     const value = [...latest.values()].reduce((a, b) => a + b, 0);
-    if (history.at(-1)?.date === r.date) history.at(-1)!.value = value;
+    const last = history.at(-1);
+    if (last?.date === r.date) last.value = value;
     else history.push({ date: r.date, value });
   }
   return history;
 }
 
+const isoDate = (d: Date) => d.toISOString().slice(0, 10);
+
 export function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  return isoDate(new Date());
 }
 
-function monthRange(offset: number): { start: string; end: string } {
+function monthRange(offset: number): DateRange {
   const now = new Date();
-  const fmt = (d: Date) => d.toISOString().slice(0, 10);
+  const monthStart = (month: number) =>
+    isoDate(new Date(Date.UTC(now.getFullYear(), month, 1)));
   return {
-    start: fmt(
-      new Date(Date.UTC(now.getFullYear(), now.getMonth() + offset, 1)),
-    ),
-    end: fmt(
-      new Date(Date.UTC(now.getFullYear(), now.getMonth() + offset + 1, 1)),
-    ),
+    start: monthStart(now.getMonth() + offset),
+    end: monthStart(now.getMonth() + offset + 1),
   };
 }
