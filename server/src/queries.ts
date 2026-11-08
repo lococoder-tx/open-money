@@ -16,6 +16,7 @@ import {
   count,
   desc,
   eq,
+  gt,
   gte,
   like,
   lt,
@@ -232,6 +233,29 @@ function spendingByCategory({ start, end }: DateRange): CategoryAmount[] {
     .all();
 }
 
+function dailySpending({ start, end }: DateRange): number[] {
+  const days = (Date.parse(end) - Date.parse(start)) / 86_400_000;
+  const totals = Array<number>(days).fill(0);
+  const rows = db
+    .select({
+      date: transactions.date,
+      amount: sql<number>`sum(${transactions.amount})`,
+    })
+    .from(transactions)
+    .where(
+      and(
+        gte(transactions.date, start),
+        lt(transactions.date, end),
+        notInArray(category, NON_SPENDING_CATEGORIES),
+        gt(transactions.amount, 0),
+      ),
+    )
+    .groupBy(transactions.date)
+    .all();
+  for (const r of rows) totals[Number(r.date.slice(8)) - 1] = r.amount;
+  return totals;
+}
+
 export function listBudgets(): Budget[] {
   const spent = new Map(
     spendingByCategory(monthRange(0)).map((c) => [c.category, c.amount]),
@@ -266,24 +290,6 @@ export function getSummary(): Summary {
   }
 
   const thisMonth = monthRange(0);
-  const lastMonth = monthRange(-1);
-  const byCategory = spendingByCategory(thisMonth);
-  const total = (cs: CategoryAmount[]) =>
-    cs.reduce((sum, c) => sum + c.amount, 0);
-  const { income } = db
-    .select({
-      income: sql<number>`coalesce(-sum(${transactions.amount}), 0)`,
-    })
-    .from(transactions)
-    .where(
-      and(
-        gte(transactions.date, thisMonth.start),
-        lt(transactions.date, thisMonth.end),
-        eq(category, "INCOME"),
-      ),
-    )
-    .get()!;
-
   const upcoming = db
     .select(recurringFields)
     .from(recurring)
@@ -303,12 +309,15 @@ export function getSummary(): Summary {
     netWorth: assets - liabilities,
     assets,
     liabilities,
-    monthSpending: total(byCategory),
-    lastMonthSpending: total(spendingByCategory(lastMonth)),
-    monthIncome: income,
-    spendingByCategory: byCategory,
+    dailySpending: {
+      thisMonth: dailySpending(thisMonth).slice(0, Number(today().slice(8))),
+      lastMonth: dailySpending(monthRange(-1)),
+    },
+    spendingByCategory: spendingByCategory(thisMonth),
     netWorthHistory: netWorthHistory(),
     upcoming,
+    recentTransactions: listTransactions({ limit: 8, offset: 0 })
+      .transactions,
   };
 }
 

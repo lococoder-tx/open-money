@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Account, Transaction, TransactionPage } from "@rocket/shared";
 import { api, useApi } from "../api.ts";
+import { MerchantLogo } from "../components/MerchantLogo.tsx";
 import { categoryLabel, money, shortDate } from "../format.ts";
 
 const PAGE_SIZE = 50;
@@ -152,13 +153,7 @@ function Row({
       <td className="muted nowrap">{shortDate(txn.date)}</td>
       <td>
         <div className="merchant">
-          {txn.logoUrl ? (
-            <img src={txn.logoUrl} alt="" />
-          ) : (
-            <span className="logo-fallback">
-              {(txn.merchantName ?? txn.name)[0]}
-            </span>
-          )}
+          <MerchantLogo txn={txn} />
           <span>
             {txn.merchantName ?? txn.name}
             {txn.pending && <span className="badge">Pending</span>}
