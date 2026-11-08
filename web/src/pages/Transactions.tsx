@@ -63,6 +63,11 @@ export function Transactions() {
   const setPage = (p: number) => setFilters({ page: p || undefined });
 
   const [search, setSearch] = useState(filters.search ?? "");
+  const [urlSearch, setUrlSearch] = useState(filters.search);
+  if (filters.search !== urlSearch) {
+    setUrlSearch(filters.search);
+    setSearch(filters.search ?? "");
+  }
   useEffect(() => {
     const t = setTimeout(() => {
       if ((search || undefined) !== filters.search)

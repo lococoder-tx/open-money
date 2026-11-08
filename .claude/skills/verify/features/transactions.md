@@ -6,7 +6,7 @@ The transactions page at `/transactions` lists transactions in a table with debo
 
 - `txn-search` debounces search by 250 ms into one request and sets `?search=`.
 - `txn-filter` sets the category and account filters, writes `?category=` and `?accountId=`, and resets to the first page.
-- `txn-url` restores the filters and the input values from the URL on load.
+- `txn-url` restores the filters and the input values from the URL on load, and on browser back or forward.
 - `txn-page` shows Previous and Next when there are more than 50 results, and sets `?page=` as a zero-based index.
 - `txn-recat` changes a row's category, which sends a PATCH and refetches the list.
 

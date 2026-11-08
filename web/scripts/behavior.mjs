@@ -121,6 +121,21 @@ await check("transaction filters live in the URL and survive a reload", async ({
   );
 });
 
+await check("browser back restores the search box to the URL's search", async ({ page }) => {
+  await page.goto(BASE_URL + "/transactions");
+  await page.locator("tbody tr").first().waitFor();
+  const box = page.getByPlaceholder("Search merchant or description");
+  await box.fill("uber");
+  await page.waitForURL((u) => u.searchParams.get("search") === "uber");
+  await page.goBack();
+  await page.waitForURL((u) => !u.searchParams.has("search"));
+  await page.waitForFunction(
+    () => document.querySelector("input[placeholder^='Search']")?.value === "",
+    null,
+    { timeout: 3000 },
+  ).catch(() => assert.fail("search box still shows stale text after back"));
+});
+
 await check("recategorizing a transaction refetches the list", async ({ page, gets, getsSince }) => {
   await page.goto(BASE_URL + "/transactions");
   await page.locator("tbody tr").first().waitFor();
