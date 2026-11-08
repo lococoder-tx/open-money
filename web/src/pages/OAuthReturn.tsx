@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { readPendingLink, usePlaidFlow } from "../components/PlaidLink.tsx";
 import { card, cardLink, errorText } from "../components/ui.tsx";
 
@@ -10,7 +10,7 @@ export function OAuthReturn() {
 
   usePlaidFlow(pending, {
     receivedRedirectUri: window.location.href,
-    onFinish: (err) => (err ? setError(err) : navigate("/accounts")),
+    onFinish: (err) => (err ? setError(err) : navigate({ to: "/accounts" })),
   });
 
   if (!pending) {

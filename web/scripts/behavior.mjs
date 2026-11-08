@@ -104,6 +104,23 @@ await check("category filter resets to page 1 and refetches", async ({ page, get
   assert.equal(last.searchParams.get("offset"), "0");
 });
 
+await check("transaction filters live in the URL and survive a reload", async ({ page, gets, getsSince }) => {
+  await page.goto(BASE_URL + "/transactions");
+  await page.locator("tbody tr").first().waitFor();
+  const select = page.locator("select").first();
+  const value = await select.locator("option").nth(1).getAttribute("value");
+  await select.selectOption(value);
+  await page.waitForURL((u) => u.searchParams.get("category") === value);
+  const mark = gets.length;
+  await page.reload();
+  await page.locator("tbody tr").first().waitFor();
+  assert.equal(await page.locator("select").first().inputValue(), value);
+  assert.ok(
+    getsSince(mark, "/transactions").some((u) => u.searchParams.get("category") === value),
+    "reload should fetch with the category from the URL",
+  );
+});
+
 await check("recategorizing a transaction refetches the list", async ({ page, gets, getsSince }) => {
   await page.goto(BASE_URL + "/transactions");
   await page.locator("tbody tr").first().waitFor();

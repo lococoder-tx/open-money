@@ -1,14 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { NavLink, Route, Routes } from "react-router-dom";
+import { Link, Outlet } from "@tanstack/react-router";
 import { api } from "./api.ts";
 import { Button } from "./components/ui.tsx";
-import { Accounts } from "./pages/Accounts.tsx";
-import { Budgets } from "./pages/Budgets.tsx";
-import { Dashboard } from "./pages/Dashboard.tsx";
-import { Investments } from "./pages/Investments.tsx";
-import { OAuthReturn } from "./pages/OAuthReturn.tsx";
-import { Recurring } from "./pages/Recurring.tsx";
-import { Transactions } from "./pages/Transactions.tsx";
 
 const nav = [
   { to: "/", label: "Dashboard" },
@@ -17,7 +10,7 @@ const nav = [
   { to: "/budgets", label: "Budgets" },
   { to: "/investments", label: "Investments" },
   { to: "/accounts", label: "Accounts" },
-];
+] as const;
 
 export function App() {
   const queryClient = useQueryClient();
@@ -32,16 +25,19 @@ export function App() {
         <div className="px-3 pb-5 text-18 font-bold">🚀 Rocket Clone</div>
         <nav className="flex flex-1 flex-row flex-wrap gap-0.5 md:flex-col md:flex-nowrap">
           {nav.map((n) => (
-            <NavLink
+            <Link
               key={n.to}
               to={n.to}
-              end={n.to === "/"}
-              className={({ isActive }) =>
-                `rounded-lg px-3 py-[9px] ${isActive ? "bg-accent text-white" : "text-sidebar-fg hover:bg-sidebar-hover hover:text-white"}`
-              }
+              activeOptions={{ exact: true, includeSearch: false }}
+              className="rounded-lg px-3 py-[9px]"
+              activeProps={{ className: "bg-accent text-white" }}
+              inactiveProps={{
+                className:
+                  "text-sidebar-fg hover:bg-sidebar-hover hover:text-white",
+              }}
             >
               {n.label}
-            </NavLink>
+            </Link>
           ))}
         </nav>
         <Button
@@ -53,15 +49,7 @@ export function App() {
         </Button>
       </aside>
       <main className="min-w-0 max-w-[1200px] flex-1 p-4 md:p-8">
-        <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/transactions" element={<Transactions />} />
-          <Route path="/recurring" element={<Recurring />} />
-          <Route path="/budgets" element={<Budgets />} />
-          <Route path="/investments" element={<Investments />} />
-          <Route path="/accounts" element={<Accounts />} />
-          <Route path="/oauth" element={<OAuthReturn />} />
-        </Routes>
+        <Outlet />
       </main>
     </div>
   );
