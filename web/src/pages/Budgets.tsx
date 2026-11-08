@@ -1,6 +1,16 @@
 import { useState, type FormEvent } from "react";
 import { NON_SPENDING_CATEGORIES, type Budget } from "@rocket/shared";
 import { api, useApi } from "../api.ts";
+import {
+  Button,
+  card,
+  errorText,
+  field,
+  Meter,
+  pageTitle,
+  row,
+  stack,
+} from "../components/ui.tsx";
 import { categoryLabel, money } from "../format.ts";
 
 export function Budgets() {
@@ -29,17 +39,17 @@ export function Budgets() {
   const totalSpent = data?.reduce((s, b) => s + b.spent, 0) ?? 0;
 
   return (
-    <div className="stack">
-      <h1>Budgets</h1>
-      {error && <div className="error-text">{error}</div>}
+    <div className={stack}>
+      <h1 className={pageTitle}>Budgets</h1>
+      {error && <div className={errorText}>{error}</div>}
 
       {data && data.length > 0 && (
         <BudgetBar label="Total" spent={totalSpent} limit={totalLimit} />
       )}
 
-      <section className="card stack">
+      <section className={`${card} ${stack}`}>
         {data?.length === 0 && (
-          <p className="muted">
+          <p className="my-[1em] text-muted">
             No budgets yet. Add one per spending category below.
           </p>
         )}
@@ -54,8 +64,12 @@ export function Budgets() {
         ))}
       </section>
 
-      <form className="card row" onSubmit={save}>
-        <select value={category} onChange={(e) => setCategory(e.target.value)}>
+      <form className={`${card} ${row}`} onSubmit={save}>
+        <select
+          className={field}
+          value={category}
+          onChange={(e) => setCategory(e.target.value)}
+        >
           <option value="">Choose a category</option>
           {categories.data
             ?.filter((c) => !NON_SPENDING_CATEGORIES.includes(c))
@@ -66,6 +80,7 @@ export function Budgets() {
             ))}
         </select>
         <input
+          className={field}
           type="number"
           min="1"
           step="1"
@@ -73,9 +88,9 @@ export function Budgets() {
           value={limit}
           onChange={(e) => setLimit(e.target.value)}
         />
-        <button className="btn primary" type="submit">
+        <Button variant="primary" type="submit">
           Save budget
-        </button>
+        </Button>
       </form>
     </div>
   );
@@ -93,33 +108,29 @@ function BudgetBar({
   onRemove?: () => void;
 }) {
   const ratio = limit > 0 ? spent / limit : 0;
-  const tone = ratio > 1 ? "over" : ratio > 0.85 ? "near" : "";
+  const tone = ratio > 1 ? "over" : ratio > 0.85 ? "near" : "good";
   return (
-    <div className="budget">
-      <div className="row between">
+    <div className="flex flex-col gap-1.5">
+      <div className={`${row} justify-between`}>
         <strong>{label}</strong>
-        <span className="row small">
+        <span className={`${row} text-13`}>
           <span>
-            {money(spent)} <span className="muted">of {money(limit)}</span>
+            {money(spent)} <span className="text-muted">of {money(limit)}</span>
           </span>
           {onRemove && (
-            <button
-              className="btn small ghost"
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={onRemove}
               aria-label={`Remove ${label} budget`}
             >
               ✕
-            </button>
+            </Button>
           )}
         </span>
       </div>
-      <div className="meter">
-        <div
-          className={`meter-fill ${tone}`}
-          style={{ width: `${Math.min(100, ratio * 100)}%` }}
-        />
-      </div>
-      <div className="muted small">
+      <Meter percent={Math.min(100, ratio * 100)} tone={tone} />
+      <div className="text-13 text-muted">
         {ratio > 1
           ? `${money(spent - limit)} over`
           : `${money(limit - spent)} left`}

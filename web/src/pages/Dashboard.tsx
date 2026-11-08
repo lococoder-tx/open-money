@@ -13,6 +13,18 @@ import type { Account, Institution, Summary } from "@rocket/shared";
 import { useApi } from "../api.ts";
 import { MerchantLogo } from "../components/MerchantLogo.tsx";
 import { ConnectButton } from "../components/PlaidLink.tsx";
+import {
+  card,
+  cardLink,
+  cardTitle,
+  errorText,
+  badge,
+  Meter,
+  num,
+  pageTitle,
+  row,
+  stack,
+} from "../components/ui.tsx";
 import { categoryLabel, money, shortDate } from "../format.ts";
 
 export function Dashboard() {
@@ -21,22 +33,22 @@ export function Dashboard() {
   const summary = useApi<Summary>("/summary");
   const error = summary.error ?? institutions.error ?? accounts.error;
 
-  if (error) return <div className="card error-text">{error}</div>;
+  if (error) return <div className={`${card} ${errorText}`}>{error}</div>;
   if (!summary.data || !institutions.data || !accounts.data)
-    return <div className="muted">Loading…</div>;
+    return <div className="text-muted">Loading…</div>;
   if (institutions.data.length === 0) return <Welcome />;
 
   const data = summary.data;
   return (
-    <div className="stack">
-      <h1>{greeting()}</h1>
-      <div className="dashboard">
-        <div className="stack">
+    <div className={stack}>
+      <h1 className={pageTitle}>{greeting()}</h1>
+      <div className="grid grid-cols-[1fr] items-start gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
+        <div className={stack}>
           <SpendingCard daily={data.dailySpending} />
           <RecentTransactions transactions={data.recentTransactions} />
           <TopCategories categories={data.spendingByCategory} />
         </div>
-        <div className="stack">
+        <div className={stack}>
           <AccountsCard accounts={accounts.data} />
           <NetWorthCard summary={data} />
           <UpcomingCard upcoming={data.upcoming} />
@@ -45,6 +57,15 @@ export function Dashboard() {
     </div>
   );
 }
+
+const cardHead = `${row} mb-2 justify-between`;
+const cardHeadLink = `${cardLink} text-13`;
+const heroValue = "mt-0.5 mb-1 text-32 font-bold tabular-nums";
+const list = "text-14";
+const listItem =
+  "flex items-center justify-between gap-3 border-b border-border py-2.5 last:border-b-0";
+const caption = "text-13 text-muted";
+const emptyText = "my-[1em] text-muted";
 
 function greeting(): string {
   const hour = new Date().getHours();
@@ -67,20 +88,24 @@ function SpendingCard({ daily }: { daily: Summary["dailySpending"] }) {
   const delta = spent - lastMonthSoFar;
   const chart = Array.from(
     { length: Math.max(thisMonth.length, lastMonth.length) },
-    (_, i) => ({ day: i + 1, thisMonth: thisMonth[i], lastMonth: lastMonth[i] }),
+    (_, i) => ({
+      day: i + 1,
+      thisMonth: thisMonth[i],
+      lastMonth: lastMonth[i],
+    }),
   );
 
   return (
-    <section className="card">
-      <div className="muted small">Current spend this month</div>
-      <div className="hero-value">{money(spent)}</div>
-      <div className={`small ${delta > 0 ? "negative" : "positive"}`}>
-        {money(Math.abs(delta))} {delta > 0 ? "above" : "below"} last month
-        at this point
+    <section className={card}>
+      <div className={caption}>Current spend this month</div>
+      <div className={heroValue}>{money(spent)}</div>
+      <div className={`text-13 ${delta > 0 ? "text-bad" : "text-good"}`}>
+        {money(Math.abs(delta))} {delta > 0 ? "above" : "below"} last month at
+        this point
       </div>
       <ResponsiveContainer width="100%" height={220}>
         <AreaChart data={chart} margin={{ top: 16, right: 4, left: 4 }}>
-          <CartesianGrid vertical={false} stroke="var(--border)" />
+          <CartesianGrid vertical={false} stroke="var(--color-border)" />
           <XAxis
             dataKey="day"
             tickLine={false}
@@ -105,24 +130,25 @@ function SpendingCard({ daily }: { daily: Summary["dailySpending"] }) {
           />
           <Line
             dataKey="lastMonth"
-            stroke="var(--muted)"
+            stroke="var(--color-muted)"
             strokeDasharray="4 4"
             dot={false}
             isAnimationActive={false}
           />
           <Area
             dataKey="thisMonth"
-            stroke="var(--accent)"
+            stroke="var(--color-accent)"
             strokeWidth={2.5}
-            fill="var(--accent-soft)"
+            fill="var(--color-accent-soft)"
             dot={false}
             isAnimationActive={false}
           />
         </AreaChart>
       </ResponsiveContainer>
-      <div className="legend small muted">
-        <span className="swatch accent" /> This month
-        <span className="swatch dashed" /> Last month
+      <div className={`flex items-center gap-1.5 ${caption}`}>
+        <span className="h-0 w-4 border-t-3 border-accent" /> This month
+        <span className="ml-2.5 h-0 w-4 border-t-2 border-dashed border-muted" />{" "}
+        Last month
       </div>
     </section>
   );
@@ -134,32 +160,32 @@ function RecentTransactions({
   transactions: Summary["recentTransactions"];
 }) {
   return (
-    <section className="card">
-      <div className="row between card-head">
-        <h2>Recent transactions</h2>
-        <Link to="/transactions" className="small">
+    <section className={card}>
+      <div className={cardHead}>
+        <h2 className={cardTitle}>Recent transactions</h2>
+        <Link to="/transactions" className={cardHeadLink}>
           See all
         </Link>
       </div>
       {transactions.length === 0 ? (
-        <p className="muted">No transactions yet.</p>
+        <p className={emptyText}>No transactions yet.</p>
       ) : (
-        <ul className="list">
+        <ul className={list}>
           {transactions.map((t) => (
-            <li key={t.id}>
-              <div className="merchant">
+            <li key={t.id} className={listItem}>
+              <div className="flex items-center gap-2.5">
                 <MerchantLogo txn={t} />
                 <div>
                   <div>
                     {t.merchantName ?? t.name}
-                    {t.pending && <span className="badge">Pending</span>}
+                    {t.pending && <span className={badge}>Pending</span>}
                   </div>
-                  <div className="muted small">
+                  <div className={caption}>
                     {categoryLabel(t.category)} · {shortDate(t.date)}
                   </div>
                 </div>
               </div>
-              <div className={`num ${t.amount < 0 ? "positive" : ""}`}>
+              <div className={`${num} ${t.amount < 0 ? "text-good" : ""}`}>
                 {t.amount < 0 ? "+" : ""}
                 {money(Math.abs(t.amount), t.currency)}
               </div>
@@ -179,29 +205,24 @@ function TopCategories({
   const top = categories.slice(0, 5);
   const max = top[0]?.amount ?? 0;
   return (
-    <section className="card">
-      <div className="row between card-head">
-        <h2>Top categories</h2>
-        <Link to="/budgets" className="small">
+    <section className={card}>
+      <div className={cardHead}>
+        <h2 className={cardTitle}>Top categories</h2>
+        <Link to="/budgets" className={cardHeadLink}>
           Budgets
         </Link>
       </div>
       {top.length === 0 ? (
-        <p className="muted">No spending yet this month.</p>
+        <p className={emptyText}>No spending yet this month.</p>
       ) : (
-        <div className="stack tight">
+        <div className="flex flex-col gap-3">
           {top.map((c) => (
-            <div key={c.category} className="budget">
-              <div className="row between small">
+            <div key={c.category} className="flex flex-col gap-1.5">
+              <div className={`${row} justify-between text-13`}>
                 <span>{categoryLabel(c.category)}</span>
-                <span className="num">{money(c.amount)}</span>
+                <span className={num}>{money(c.amount)}</span>
               </div>
-              <div className="meter">
-                <div
-                  className="meter-fill accent"
-                  style={{ width: `${(c.amount / max) * 100}%` }}
-                />
-              </div>
+              <Meter percent={(c.amount / max) * 100} tone="accent" />
             </div>
           ))}
         </div>
@@ -235,6 +256,8 @@ function groupOf(a: Account): AccountGroup {
   }
 }
 
+const groupRow = "flex justify-between border-b border-border py-3";
+
 function AccountsCard({ accounts }: { accounts: Account[] }) {
   const groups = new Map<AccountGroup, Account[]>();
   for (const a of accounts) {
@@ -246,40 +269,49 @@ function AccountsCard({ accounts }: { accounts: Account[] }) {
   const netCash = totalOf("checking") - totalOf("cards");
 
   return (
-    <section className="card">
-      <div className="row between card-head">
-        <h2>Accounts</h2>
-        <Link to="/accounts" className="small">
+    <section className={card}>
+      <div className={cardHead}>
+        <h2 className={cardTitle}>Accounts</h2>
+        <Link to="/accounts" className={cardHeadLink}>
           Manage
         </Link>
       </div>
-      <div className="account-groups">
+      <div className="text-15 [&>div:last-child_summary]:border-b-0">
         {(Object.keys(ACCOUNT_GROUPS) as AccountGroup[]).map((g) => {
           const members = groups.get(g);
           if (!members) return null;
           return (
             <div key={g}>
-              <details>
-                <summary>
-                  <span>{ACCOUNT_GROUPS[g]}</span>
-                  <span className="num">{money(totalOf(g))}</span>
+              <details className="group">
+                <summary
+                  className={`${groupRow} cursor-pointer list-none font-semibold [&::-webkit-details-marker]:hidden`}
+                >
+                  <span className="before:inline-block before:w-3.5 before:text-muted before:transition-transform before:duration-150 before:ease-[ease] before:content-['›'] group-open:before:rotate-90">
+                    {ACCOUNT_GROUPS[g]}
+                  </span>
+                  <span className={num}>{money(totalOf(g))}</span>
                 </summary>
                 {members.map((a) => (
-                  <div key={a.id} className="account-row small">
+                  <div
+                    key={a.id}
+                    className="flex justify-between gap-2 border-b border-border py-2 pl-3.5 text-13"
+                  >
                     <span>
                       {a.name}
-                      {a.mask && <span className="muted"> ••{a.mask}</span>}
+                      {a.mask && (
+                        <span className="text-muted"> ••{a.mask}</span>
+                      )}
                     </span>
-                    <span className="num">
+                    <span className={num}>
                       {money(a.currentBalance, a.currency)}
                     </span>
                   </div>
                 ))}
               </details>
               {g === "cards" && (
-                <div className="net-cash">
+                <div className={`${groupRow} pl-3.5 text-muted`}>
                   <span>Net cash</span>
-                  <span className={`num ${netCash < 0 ? "negative" : ""}`}>
+                  <span className={`${num} ${netCash < 0 ? "text-bad" : ""}`}>
                     {money(netCash)}
                   </span>
                 </div>
@@ -295,9 +327,9 @@ function AccountsCard({ accounts }: { accounts: Account[] }) {
 function NetWorthCard({ summary }: { summary: Summary }) {
   const history = summary.netWorthHistory;
   return (
-    <section className="card">
-      <h2>Net worth</h2>
-      <div className="hero-value">{money(summary.netWorth)}</div>
+    <section className={card}>
+      <h2 className={`${cardTitle} mb-3`}>Net worth</h2>
+      <div className={heroValue}>{money(summary.netWorth)}</div>
       {history.length >= 2 && (
         <ResponsiveContainer width="100%" height={60}>
           <AreaChart data={history} margin={{ top: 8 }}>
@@ -307,20 +339,20 @@ function NetWorthCard({ summary }: { summary: Summary }) {
             />
             <Area
               dataKey="value"
-              stroke="var(--accent)"
-              fill="var(--accent-soft)"
+              stroke="var(--color-accent)"
+              fill="var(--color-accent-soft)"
               isAnimationActive={false}
             />
           </AreaChart>
         </ResponsiveContainer>
       )}
-      <div className="row between small net-split">
-        <span className="muted">Assets</span>
-        <span className="num">{money(summary.assets)}</span>
+      <div className={`${row} mt-2 justify-between text-13`}>
+        <span className="text-muted">Assets</span>
+        <span className={num}>{money(summary.assets)}</span>
       </div>
-      <div className="row between small">
-        <span className="muted">Debts</span>
-        <span className="num">{money(summary.liabilities)}</span>
+      <div className={`${row} justify-between text-13`}>
+        <span className="text-muted">Debts</span>
+        <span className={num}>{money(summary.liabilities)}</span>
       </div>
     </section>
   );
@@ -334,32 +366,32 @@ function UpcomingCard({ upcoming }: { upcoming: Summary["upcoming"] }) {
   const weekTotal = thisWeek.reduce((sum, r) => sum + r.lastAmount, 0);
 
   return (
-    <section className="card">
-      <div className="row between card-head">
-        <h2>Coming up</h2>
-        <Link to="/recurring" className="small">
+    <section className={card}>
+      <div className={cardHead}>
+        <h2 className={cardTitle}>Coming up</h2>
+        <Link to="/recurring" className={cardHeadLink}>
           Recurring
         </Link>
       </div>
       {upcoming.length === 0 ? (
-        <p className="muted">No upcoming recurring charges detected.</p>
+        <p className={emptyText}>No upcoming recurring charges detected.</p>
       ) : (
         <>
-          <p className="muted small">
+          <p className={`my-[1em] ${caption}`}>
             {thisWeek.length === 0
               ? "Nothing due in the next 7 days."
               : `${thisWeek.length} charge${thisWeek.length === 1 ? "" : "s"} due in the next 7 days, totaling ${money(weekTotal)}.`}
           </p>
-          <ul className="list">
+          <ul className={list}>
             {upcoming.map((r) => (
-              <li key={r.id}>
+              <li key={r.id} className={listItem}>
                 <div>
                   <div>{r.merchantName ?? r.name}</div>
-                  <div className="muted small">
+                  <div className={caption}>
                     {r.nextDate && shortDate(r.nextDate)}
                   </div>
                 </div>
-                <div className="num">{money(r.lastAmount)}</div>
+                <div className={num}>{money(r.lastAmount)}</div>
               </li>
             ))}
           </ul>
@@ -371,18 +403,18 @@ function UpcomingCard({ upcoming }: { upcoming: Summary["upcoming"] }) {
 
 function Welcome() {
   return (
-    <div className="card welcome">
-      <h1>Connect your first account</h1>
-      <p className="muted">
+    <div className={`${card} mx-auto my-[60px] max-w-[560px] text-center`}>
+      <h1 className={pageTitle}>Connect your first account</h1>
+      <p className={emptyText}>
         Link a bank or credit card to track spending and subscriptions, or an
         investment or retirement account (Fidelity, Principal, Vanguard) to
         track holdings.
       </p>
-      <div className="row">
+      <div className={`${row} mt-5 justify-center`}>
         <ConnectButton target={{ kind: "banking" }}>
           Connect bank or card
         </ConnectButton>
-        <ConnectButton target={{ kind: "investments" }} className="btn">
+        <ConnectButton target={{ kind: "investments" }} variant="default">
           Connect investments
         </ConnectButton>
       </div>

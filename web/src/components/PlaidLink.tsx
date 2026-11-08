@@ -5,6 +5,7 @@ import {
 } from "react-plaid-link";
 import type { Institution, LinkTarget } from "@rocket/shared";
 import { api, DataVersion, errorMessage } from "../api.ts";
+import { Button, errorText, type ButtonVariant } from "./ui.tsx";
 
 /**
  * OAuth institutions (Fidelity, most big banks) leave the app and come back to /oauth.
@@ -88,11 +89,11 @@ export function usePlaidFlow(
 export function ConnectButton({
   target,
   children,
-  className,
+  variant = "primary",
 }: {
   target: LinkTarget;
   children: ReactNode;
-  className?: string;
+  variant?: ButtonVariant;
 }) {
   const [pending, setPending] = useState<PendingLink | null>(null);
   const [busy, setBusy] = useState(false);
@@ -128,14 +129,10 @@ export function ConnectButton({
 
   return (
     <>
-      <button
-        className={className ?? "btn primary"}
-        onClick={start}
-        disabled={busy}
-      >
+      <Button variant={variant} onClick={start} disabled={busy}>
         {busy ? "Connecting…" : children}
-      </button>
-      {error && <span className="error-text">{error}</span>}
+      </Button>
+      {error && <span className={errorText}>{error}</span>}
     </>
   );
 }

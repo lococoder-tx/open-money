@@ -2,6 +2,19 @@ import { useEffect, useState } from "react";
 import type { Account, Transaction, TransactionPage } from "@rocket/shared";
 import { api, useApi } from "../api.ts";
 import { MerchantLogo } from "../components/MerchantLogo.tsx";
+import {
+  badge,
+  Button,
+  cardFlush,
+  errorText,
+  field,
+  pageTitle,
+  row,
+  stack,
+  table,
+  Td,
+  Th,
+} from "../components/ui.tsx";
 import { categoryLabel, money, shortDate } from "../format.ts";
 
 const PAGE_SIZE = 50;
@@ -37,15 +50,17 @@ export function Transactions() {
   const pages = data ? Math.ceil(data.total / PAGE_SIZE) : 0;
 
   return (
-    <div className="stack">
-      <h1>Transactions</h1>
-      <div className="row filters">
+    <div className={stack}>
+      <h1 className={pageTitle}>Transactions</h1>
+      <div className={row}>
         <input
+          className={`${field} min-w-[220px] flex-1`}
           placeholder="Search merchant or description"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
         <select
+          className={field}
           value={category}
           onChange={(e) => {
             setCategory(e.target.value);
@@ -60,6 +75,7 @@ export function Transactions() {
           ))}
         </select>
         <select
+          className={field}
           value={accountId}
           onChange={(e) => {
             setAccountId(e.target.value);
@@ -75,16 +91,16 @@ export function Transactions() {
         </select>
       </div>
 
-      {error && <div className="error-text">{error}</div>}
-      <div className="card flush">
-        <table>
+      {error && <div className={errorText}>{error}</div>}
+      <div className={cardFlush}>
+        <table className={table}>
           <thead>
             <tr>
-              <th>Date</th>
-              <th>Description</th>
-              <th>Category</th>
-              <th>Account</th>
-              <th className="num">Amount</th>
+              <Th>Date</Th>
+              <Th>Description</Th>
+              <Th>Category</Th>
+              <Th>Account</Th>
+              <Th numeric>Amount</Th>
             </tr>
           </thead>
           <tbody>
@@ -99,29 +115,24 @@ export function Transactions() {
           </tbody>
         </table>
         {data?.total === 0 && (
-          <p className="muted pad">No transactions match.</p>
+          <p className="px-5 py-4 text-muted">No transactions match.</p>
         )}
       </div>
 
       {pages > 1 && (
-        <div className="row">
-          <button
-            className="btn"
-            disabled={page === 0}
-            onClick={() => setPage(page - 1)}
-          >
+        <div className={row}>
+          <Button disabled={page === 0} onClick={() => setPage(page - 1)}>
             Previous
-          </button>
-          <span className="muted">
+          </Button>
+          <span className="text-muted">
             Page {page + 1} of {pages}
           </span>
-          <button
-            className="btn"
+          <Button
             disabled={page + 1 >= pages}
             onClick={() => setPage(page + 1)}
           >
             Next
-          </button>
+          </Button>
         </div>
       )}
     </div>
@@ -150,19 +161,19 @@ function Row({
 
   return (
     <tr>
-      <td className="muted nowrap">{shortDate(txn.date)}</td>
-      <td>
-        <div className="merchant">
+      <Td className="whitespace-nowrap text-muted">{shortDate(txn.date)}</Td>
+      <Td>
+        <div className="flex items-center gap-2.5">
           <MerchantLogo txn={txn} />
           <span>
             {txn.merchantName ?? txn.name}
-            {txn.pending && <span className="badge">Pending</span>}
+            {txn.pending && <span className={badge}>Pending</span>}
           </span>
         </div>
-      </td>
-      <td>
+      </Td>
+      <Td>
         <select
-          className="inline"
+          className="rounded-lg border border-transparent bg-transparent p-1 text-14 text-fg hover:border-border"
           value={txn.category}
           onChange={(e) => recategorize(e.target.value)}
         >
@@ -172,11 +183,11 @@ function Row({
             </option>
           ))}
         </select>
-      </td>
-      <td className="muted">{txn.accountName}</td>
-      <td className={`num ${txn.amount < 0 ? "positive" : ""}`}>
+      </Td>
+      <Td className="text-muted">{txn.accountName}</Td>
+      <Td numeric className={txn.amount < 0 ? "text-good" : ""}>
         {money(-txn.amount, txn.currency)}
-      </td>
+      </Td>
     </tr>
   );
 }
