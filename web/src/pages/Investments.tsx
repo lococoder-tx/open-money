@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery } from '@tanstack/react-query'
 import {
   card,
   cardFlush,
@@ -8,21 +8,21 @@ import {
   table,
   Td,
   Th,
-} from "../components/ui.tsx";
-import { money } from "../format.ts";
-import { queries } from "../queries.ts";
+} from '../components/ui.tsx'
+import { money } from '../format.ts'
+import { queries } from '../queries.ts'
 
 export function Investments() {
-  const { data, error } = useQuery(queries.holdings);
+  const { data, error } = useQuery(queries.holdings)
   if (error)
-    return <div className={`${card} ${errorText}`}>{error.message}</div>;
-  if (!data) return <div className="text-muted">Loading…</div>;
+    return <div className={`${card} ${errorText}`}>{error.message}</div>
+  if (!data) return <div className="text-muted">Loading…</div>
 
-  const total = data.reduce((s, h) => s + h.value, 0);
+  const total = data.reduce((s, h) => s + h.value, 0)
   const gain = data.reduce(
     (s, h) => (h.costBasis == null ? s : s + h.value - h.costBasis),
     0,
-  );
+  )
 
   return (
     <div className={stack}>
@@ -35,7 +35,7 @@ export function Investments() {
         <div className={card}>
           <div className="text-muted">Unrealized gain</div>
           <div
-            className={`mt-1 text-24 font-bold ${gain >= 0 ? "text-good" : "text-bad"}`}
+            className={`mt-1 text-24 font-bold ${gain >= 0 ? 'text-good' : 'text-bad'}`}
           >
             {money(gain)}
           </div>
@@ -65,7 +65,7 @@ export function Investments() {
             </thead>
             <tbody>
               {data.map((h) => {
-                const g = h.costBasis == null ? null : h.value - h.costBasis;
+                const g = h.costBasis == null ? null : h.value - h.costBasis
                 return (
                   <tr key={`${h.accountId}:${h.securityId}`}>
                     <Td>
@@ -83,7 +83,7 @@ export function Investments() {
                     <Td
                       numeric
                       className={
-                        g == null ? "" : g >= 0 ? "text-good" : "text-bad"
+                        g == null ? '' : g >= 0 ? 'text-good' : 'text-bad'
                       }
                     >
                       {money(g)}
@@ -91,15 +91,15 @@ export function Investments() {
                     <Td numeric>
                       {total > 0
                         ? `${((h.value / total) * 100).toFixed(1)}%`
-                        : "—"}
+                        : '—'}
                     </Td>
                   </tr>
-                );
+                )
               })}
             </tbody>
           </table>
         )}
       </section>
     </div>
-  );
+  )
 }

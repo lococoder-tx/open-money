@@ -316,8 +316,7 @@ export function getSummary(): Summary {
     spendingByCategory: spendingByCategory(thisMonth),
     netWorthHistory: netWorthHistory(),
     upcoming,
-    recentTransactions: listTransactions({ limit: 8, offset: 0 })
-      .transactions,
+    recentTransactions: listTransactions({ limit: 8, offset: 0 }).transactions,
   };
 }
 
