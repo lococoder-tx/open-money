@@ -330,6 +330,7 @@ function writeRecurring(tx: Tx, itemId: string, streams: TransactionStream[]) {
         target: recurring.id,
         set: excluded(recurring, [
           "accountId",
+          "direction",
           "name",
           "merchantName",
           "category",
