@@ -9,8 +9,8 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import type { Account, Institution, Summary } from "@rocket/shared";
-import { useApi } from "../api.ts";
+import type { Account, Summary } from "@rocket/shared";
+import { useQuery } from "@tanstack/react-query";
 import { MerchantLogo } from "../components/MerchantLogo.tsx";
 import { ConnectButton } from "../components/PlaidLink.tsx";
 import {
@@ -26,14 +26,16 @@ import {
   stack,
 } from "../components/ui.tsx";
 import { categoryLabel, money, shortDate } from "../format.ts";
+import { queries } from "../queries.ts";
 
 export function Dashboard() {
-  const institutions = useApi<Institution[]>("/institutions");
-  const accounts = useApi<Account[]>("/accounts");
-  const summary = useApi<Summary>("/summary");
+  const institutions = useQuery(queries.institutions);
+  const accounts = useQuery(queries.accounts);
+  const summary = useQuery(queries.summary);
   const error = summary.error ?? institutions.error ?? accounts.error;
 
-  if (error) return <div className={`${card} ${errorText}`}>{error}</div>;
+  if (error)
+    return <div className={`${card} ${errorText}`}>{error.message}</div>;
   if (!summary.data || !institutions.data || !accounts.data)
     return <div className="text-muted">Loading…</div>;
   if (institutions.data.length === 0) return <Welcome />;

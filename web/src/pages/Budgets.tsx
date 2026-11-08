@@ -1,6 +1,7 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
-import { NON_SPENDING_CATEGORIES, type Budget } from "@rocket/shared";
-import { api, useApi } from "../api.ts";
+import { NON_SPENDING_CATEGORIES } from "@rocket/shared";
+import { api } from "../api.ts";
 import {
   Button,
   card,
@@ -12,27 +13,38 @@ import {
   stack,
 } from "../components/ui.tsx";
 import { categoryLabel, money } from "../format.ts";
+import { queries } from "../queries.ts";
 
 export function Budgets() {
-  const { data, error, reload } = useApi<Budget[]>("/budgets");
-  const categories = useApi<string[]>("/categories");
+  const { data, error } = useQuery(queries.budgets);
+  const categories = useQuery(queries.categories);
   const [category, setCategory] = useState("");
   const [limit, setLimit] = useState("");
 
-  const save = async (e: FormEvent) => {
+  const queryClient = useQueryClient();
+  const refetchBudgets = () =>
+    queryClient.invalidateQueries({ queryKey: queries.budgets.queryKey });
+  const saveBudget = useMutation({
+    mutationFn: (b: { category: string; monthlyLimit: number }) =>
+      api(`/budgets/${encodeURIComponent(b.category)}`, {
+        method: "PUT",
+        body: { monthlyLimit: b.monthlyLimit },
+      }),
+    onSuccess: () => {
+      setLimit("");
+      return refetchBudgets();
+    },
+  });
+  const removeBudget = useMutation({
+    mutationFn: (c: string) =>
+      api(`/budgets/${encodeURIComponent(c)}`, { method: "DELETE" }),
+    onSuccess: refetchBudgets,
+  });
+
+  const save = (e: FormEvent) => {
     e.preventDefault();
     if (!category || !(Number(limit) > 0)) return;
-    await api(`/budgets/${encodeURIComponent(category)}`, {
-      method: "PUT",
-      body: { monthlyLimit: Number(limit) },
-    });
-    setLimit("");
-    reload();
-  };
-
-  const remove = async (c: string) => {
-    await api(`/budgets/${encodeURIComponent(c)}`, { method: "DELETE" });
-    reload();
+    saveBudget.mutate({ category, monthlyLimit: Number(limit) });
   };
 
   const totalLimit = data?.reduce((s, b) => s + b.monthlyLimit, 0) ?? 0;
@@ -41,7 +53,7 @@ export function Budgets() {
   return (
     <div className={stack}>
       <h1 className={pageTitle}>Budgets</h1>
-      {error && <div className={errorText}>{error}</div>}
+      {error && <div className={errorText}>{error.message}</div>}
 
       {data && data.length > 0 && (
         <BudgetBar label="Total" spent={totalSpent} limit={totalLimit} />
@@ -59,7 +71,7 @@ export function Budgets() {
             label={categoryLabel(b.category)}
             spent={b.spent}
             limit={b.monthlyLimit}
-            onRemove={() => remove(b.category)}
+            onRemove={() => removeBudget.mutate(b.category)}
           />
         ))}
       </section>

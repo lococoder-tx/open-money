@@ -1,6 +1,6 @@
-import { useContext, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Account, AccountType, Institution } from "@rocket/shared";
-import { api, DataVersion, useApi } from "../api.ts";
+import { api } from "../api.ts";
 import { ConnectButton } from "../components/PlaidLink.tsx";
 import {
   Button,
@@ -14,6 +14,7 @@ import {
   Td,
 } from "../components/ui.tsx";
 import { money } from "../format.ts";
+import { queries } from "../queries.ts";
 
 const typeLabels: Record<AccountType, string> = {
   depository: "Cash",
@@ -24,8 +25,8 @@ const typeLabels: Record<AccountType, string> = {
 };
 
 export function Accounts() {
-  const institutions = useApi<Institution[]>("/institutions");
-  const accounts = useApi<Account[]>("/accounts");
+  const institutions = useQuery(queries.institutions);
+  const accounts = useQuery(queries.accounts);
 
   return (
     <div className={stack}>
@@ -41,7 +42,7 @@ export function Accounts() {
         </div>
       </div>
       {institutions.error && (
-        <div className={errorText}>{institutions.error}</div>
+        <div className={errorText}>{institutions.error.message}</div>
       )}
       {institutions.data?.length === 0 && (
         <p className="my-[1em] text-muted">No connected institutions yet.</p>
@@ -66,18 +67,19 @@ function InstitutionCard({
   institution: Institution;
   accounts: Account[];
 }) {
-  const { bump } = useContext(DataVersion);
-  const [busy, setBusy] = useState(false);
-
-  const run = async (fn: () => Promise<unknown>) => {
-    setBusy(true);
-    try {
-      await fn();
-      bump();
-    } finally {
-      setBusy(false);
-    }
-  };
+  const queryClient = useQueryClient();
+  const invalidateAll = () => queryClient.invalidateQueries();
+  const sync = useMutation({
+    mutationFn: () =>
+      api(`/institutions/${institution.itemId}/sync`, { method: "POST" }),
+    onSuccess: invalidateAll,
+  });
+  const disconnect = useMutation({
+    mutationFn: () =>
+      api(`/institutions/${institution.itemId}`, { method: "DELETE" }),
+    onSuccess: invalidateAll,
+  });
+  const busy = sync.isPending || disconnect.isPending;
 
   const remove = () => {
     if (
@@ -85,9 +87,7 @@ function InstitutionCard({
         `Disconnect ${institution.name}? Its accounts and history will be deleted.`,
       )
     ) {
-      void run(() =>
-        api(`/institutions/${institution.itemId}`, { method: "DELETE" }),
-      );
+      disconnect.mutate();
     }
   };
 
@@ -110,16 +110,7 @@ function InstitutionCard({
               Reconnect
             </ConnectButton>
           )}
-          <Button
-            disabled={busy}
-            onClick={() =>
-              run(() =>
-                api(`/institutions/${institution.itemId}/sync`, {
-                  method: "POST",
-                }),
-              )
-            }
-          >
+          <Button disabled={busy} onClick={() => sync.mutate()}>
             {busy ? "…" : "Sync"}
           </Button>
           <Button variant="danger" disabled={busy} onClick={remove}>

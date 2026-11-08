@@ -1,5 +1,4 @@
-import type { Holding } from "@rocket/shared";
-import { useApi } from "../api.ts";
+import { useQuery } from "@tanstack/react-query";
 import {
   card,
   cardFlush,
@@ -11,10 +10,12 @@ import {
   Th,
 } from "../components/ui.tsx";
 import { money } from "../format.ts";
+import { queries } from "../queries.ts";
 
 export function Investments() {
-  const { data, error } = useApi<Holding[]>("/holdings");
-  if (error) return <div className={`${card} ${errorText}`}>{error}</div>;
+  const { data, error } = useQuery(queries.holdings);
+  if (error)
+    return <div className={`${card} ${errorText}`}>{error.message}</div>;
   if (!data) return <div className="text-muted">Loading…</div>;
 
   const total = data.reduce((s, h) => s + h.value, 0);

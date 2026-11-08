@@ -1,6 +1,7 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import type { Account, Transaction, TransactionPage } from "@rocket/shared";
-import { api, useApi } from "../api.ts";
+import type { Transaction } from "@rocket/shared";
+import { api } from "../api.ts";
 import { MerchantLogo } from "../components/MerchantLogo.tsx";
 import {
   badge,
@@ -16,6 +17,7 @@ import {
   Th,
 } from "../components/ui.tsx";
 import { categoryLabel, money, shortDate } from "../format.ts";
+import { queries } from "../queries.ts";
 
 const PAGE_SIZE = 50;
 
@@ -34,19 +36,17 @@ export function Transactions() {
     return () => clearTimeout(t);
   }, [search]);
 
-  const params = new URLSearchParams({
-    limit: String(PAGE_SIZE),
-    offset: String(page * PAGE_SIZE),
-  });
-  if (debounced) params.set("search", debounced);
-  if (category) params.set("category", category);
-  if (accountId) params.set("accountId", accountId);
-
-  const { data, error, reload } = useApi<TransactionPage>(
-    `/transactions?${params}`,
+  const { data, error } = useQuery(
+    queries.transactions({
+      limit: PAGE_SIZE,
+      offset: page * PAGE_SIZE,
+      search: debounced,
+      category,
+      accountId,
+    }),
   );
-  const categories = useApi<string[]>("/categories");
-  const accounts = useApi<Account[]>("/accounts");
+  const categories = useQuery(queries.categories);
+  const accounts = useQuery(queries.accounts);
   const pages = data ? Math.ceil(data.total / PAGE_SIZE) : 0;
 
   return (
@@ -91,7 +91,7 @@ export function Transactions() {
         </select>
       </div>
 
-      {error && <div className={errorText}>{error}</div>}
+      {error && <div className={errorText}>{error.message}</div>}
       <div className={cardFlush}>
         <table className={table}>
           <thead>
@@ -105,12 +105,7 @@ export function Transactions() {
           </thead>
           <tbody>
             {data?.transactions.map((t) => (
-              <Row
-                key={t.id}
-                txn={t}
-                categories={categories.data ?? []}
-                onChange={reload}
-              />
+              <Row key={t.id} txn={t} categories={categories.data ?? []} />
             ))}
           </tbody>
         </table>
@@ -139,25 +134,17 @@ export function Transactions() {
   );
 }
 
-function Row({
-  txn,
-  categories,
-  onChange,
-}: {
-  txn: Transaction;
-  categories: string[];
-  onChange: () => void;
-}) {
+function Row({ txn, categories }: { txn: Transaction; categories: string[] }) {
   const options = categories.includes(txn.category)
     ? categories
     : [...categories, txn.category];
-  const recategorize = async (category: string) => {
-    await api(`/transactions/${txn.id}`, {
-      method: "PATCH",
-      body: { category },
-    });
-    onChange();
-  };
+  const queryClient = useQueryClient();
+  const recategorize = useMutation({
+    mutationFn: (category: string) =>
+      api(`/transactions/${txn.id}`, { method: "PATCH", body: { category } }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["/transactions"] }),
+  });
 
   return (
     <tr>
@@ -175,7 +162,7 @@ function Row({
         <select
           className="rounded-lg border border-transparent bg-transparent p-1 text-14 text-fg hover:border-border"
           value={txn.category}
-          onChange={(e) => recategorize(e.target.value)}
+          onChange={(e) => recategorize.mutate(e.target.value)}
         >
           {options.map((c) => (
             <option key={c} value={c}>

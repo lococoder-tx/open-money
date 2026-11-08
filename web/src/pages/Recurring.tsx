@@ -1,6 +1,7 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import type { RecurringFrequency, RecurringStream } from "@rocket/shared";
-import { api, useApi } from "../api.ts";
+import { api } from "../api.ts";
 import {
   Button,
   card,
@@ -16,6 +17,7 @@ import {
   Th,
 } from "../components/ui.tsx";
 import { money, shortDate } from "../format.ts";
+import { queries } from "../queries.ts";
 
 const FREQUENCIES: Record<
   RecurringFrequency,
@@ -30,10 +32,21 @@ const FREQUENCIES: Record<
 };
 
 export function Recurring() {
-  const { data, error, reload } = useApi<RecurringStream[]>("/recurring");
+  const { data, error } = useQuery(queries.recurring);
+  const queryClient = useQueryClient();
+  const toggleHidden = useMutation({
+    mutationFn: (r: RecurringStream) =>
+      api(`/recurring/${r.id}`, {
+        method: "PATCH",
+        body: { hidden: !r.hidden },
+      }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: queries.recurring.queryKey }),
+  });
   const [showHidden, setShowHidden] = useState(false);
 
-  if (error) return <div className={`${card} ${errorText}`}>{error}</div>;
+  if (error)
+    return <div className={`${card} ${errorText}`}>{error.message}</div>;
   if (!data) return <div className="text-muted">Loading…</div>;
 
   const visible = data.filter((r) => r.isActive && (showHidden || !r.hidden));
@@ -45,14 +58,6 @@ export function Recurring() {
       (sum, r) => sum + r.averageAmount * FREQUENCIES[r.frequency].perMonth,
       0,
     );
-
-  const toggleHidden = async (r: RecurringStream) => {
-    await api(`/recurring/${r.id}`, {
-      method: "PATCH",
-      body: { hidden: !r.hidden },
-    });
-    reload();
-  };
 
   return (
     <div className={stack}>
@@ -78,12 +83,12 @@ export function Recurring() {
       <StreamTable
         title="Subscriptions & bills"
         streams={outflows}
-        onToggle={toggleHidden}
+        onToggle={toggleHidden.mutate}
       />
       <StreamTable
         title="Recurring income"
         streams={inflows}
-        onToggle={toggleHidden}
+        onToggle={toggleHidden.mutate}
       />
     </div>
   );

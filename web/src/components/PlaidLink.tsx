@@ -1,10 +1,11 @@
-import { useContext, useEffect, useState, type ReactNode } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   usePlaidLink,
   type PlaidLinkOnSuccessMetadata,
 } from "react-plaid-link";
 import type { Institution, LinkTarget } from "@rocket/shared";
-import { api, DataVersion, errorMessage } from "../api.ts";
+import { api, errorMessage } from "../api.ts";
 import { Button, errorText, type ButtonVariant } from "./ui.tsx";
 
 /**
@@ -61,7 +62,7 @@ export function usePlaidFlow(
   pending: PendingLink | null,
   opts: { receivedRedirectUri?: string; onFinish: (error?: string) => void },
 ) {
-  const { bump } = useContext(DataVersion);
+  const queryClient = useQueryClient();
   const { open, ready } = usePlaidLink({
     token: pending?.linkToken ?? null,
     receivedRedirectUri: opts.receivedRedirectUri,
@@ -69,7 +70,7 @@ export function usePlaidFlow(
       if (!pending || !publicToken) return;
       completeLink(pending, publicToken, metadata).then(
         () => {
-          bump();
+          void queryClient.invalidateQueries();
           opts.onFinish();
         },
         (err: unknown) => opts.onFinish(errorMessage(err)),

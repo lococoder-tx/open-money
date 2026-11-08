@@ -1,11 +1,3 @@
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useState,
-} from "react";
-
 export async function api<T = void>(
   path: string,
   init?: { method?: string; body?: unknown },
@@ -36,29 +28,4 @@ export async function api<T = void>(
 
 export function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
-}
-
-/** Bumped after any sync or link so every mounted query refetches. */
-export const DataVersion = createContext<{ version: number; bump: () => void }>(
-  { version: 0, bump: () => {} },
-);
-
-export function useApi<T>(path: string) {
-  const { version } = useContext(DataVersion);
-  const [state, setState] = useState<{ data?: T; error?: string }>({});
-  const [local, setLocal] = useState(0);
-
-  useEffect(() => {
-    let cancelled = false;
-    api<T>(path).then(
-      (data) => !cancelled && setState({ data }),
-      (err: unknown) => !cancelled && setState({ error: errorMessage(err) }),
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, [path, version, local]);
-
-  const reload = useCallback(() => setLocal((n) => n + 1), []);
-  return { ...state, reload };
 }
