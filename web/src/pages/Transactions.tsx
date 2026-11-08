@@ -13,10 +13,12 @@ export function Transactions() {
   const [page, setPage] = useState(0);
 
   useEffect(() => {
-    const t = setTimeout(() => setDebounced(search), 250);
+    const t = setTimeout(() => {
+      setDebounced(search);
+      setPage(0);
+    }, 250);
     return () => clearTimeout(t);
   }, [search]);
-  useEffect(() => setPage(0), [debounced, category, accountId]);
 
   const params = new URLSearchParams({
     limit: String(PAGE_SIZE),
@@ -42,7 +44,13 @@ export function Transactions() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
-        <select value={category} onChange={(e) => setCategory(e.target.value)}>
+        <select
+          value={category}
+          onChange={(e) => {
+            setCategory(e.target.value);
+            setPage(0);
+          }}
+        >
           <option value="">All categories</option>
           {categories.data?.map((c) => (
             <option key={c} value={c}>
@@ -52,7 +60,10 @@ export function Transactions() {
         </select>
         <select
           value={accountId}
-          onChange={(e) => setAccountId(e.target.value)}
+          onChange={(e) => {
+            setAccountId(e.target.value);
+            setPage(0);
+          }}
         >
           <option value="">All accounts</option>
           {accounts.data?.map((a) => (
