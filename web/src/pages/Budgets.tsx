@@ -1,45 +1,67 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
-import { NON_SPENDING_CATEGORIES, type Budget } from "@rocket/shared";
-import { api, useApi } from "../api.ts";
+import { NON_SPENDING_CATEGORIES } from "@rocket/shared";
+import { api } from "../api.ts";
+import {
+  Button,
+  card,
+  errorText,
+  field,
+  Meter,
+  pageTitle,
+  row,
+  stack,
+} from "../components/ui.tsx";
 import { categoryLabel, money } from "../format.ts";
+import { queries } from "../queries.ts";
 
 export function Budgets() {
-  const { data, error, reload } = useApi<Budget[]>("/budgets");
-  const categories = useApi<string[]>("/categories");
+  const { data, error } = useQuery(queries.budgets);
+  const categories = useQuery(queries.categories);
   const [category, setCategory] = useState("");
   const [limit, setLimit] = useState("");
 
-  const save = async (e: FormEvent) => {
+  const queryClient = useQueryClient();
+  const refetchBudgets = () =>
+    queryClient.invalidateQueries({ queryKey: queries.budgets.queryKey });
+  const saveBudget = useMutation({
+    mutationFn: (b: { category: string; monthlyLimit: number }) =>
+      api(`/budgets/${encodeURIComponent(b.category)}`, {
+        method: "PUT",
+        body: { monthlyLimit: b.monthlyLimit },
+      }),
+    onSuccess: () => {
+      setLimit("");
+      return refetchBudgets();
+    },
+  });
+  const removeBudget = useMutation({
+    mutationFn: (c: string) =>
+      api(`/budgets/${encodeURIComponent(c)}`, { method: "DELETE" }),
+    onSuccess: refetchBudgets,
+  });
+
+  const save = (e: FormEvent) => {
     e.preventDefault();
     if (!category || !(Number(limit) > 0)) return;
-    await api(`/budgets/${encodeURIComponent(category)}`, {
-      method: "PUT",
-      body: { monthlyLimit: Number(limit) },
-    });
-    setLimit("");
-    reload();
-  };
-
-  const remove = async (c: string) => {
-    await api(`/budgets/${encodeURIComponent(c)}`, { method: "DELETE" });
-    reload();
+    saveBudget.mutate({ category, monthlyLimit: Number(limit) });
   };
 
   const totalLimit = data?.reduce((s, b) => s + b.monthlyLimit, 0) ?? 0;
   const totalSpent = data?.reduce((s, b) => s + b.spent, 0) ?? 0;
 
   return (
-    <div className="stack">
-      <h1>Budgets</h1>
-      {error && <div className="error-text">{error}</div>}
+    <div className={stack}>
+      <h1 className={pageTitle}>Budgets</h1>
+      {error && <div className={errorText}>{error.message}</div>}
 
       {data && data.length > 0 && (
         <BudgetBar label="Total" spent={totalSpent} limit={totalLimit} />
       )}
 
-      <section className="card stack">
+      <section className={`${card} ${stack}`}>
         {data?.length === 0 && (
-          <p className="muted">
+          <p className="my-[1em] text-muted">
             No budgets yet. Add one per spending category below.
           </p>
         )}
@@ -49,13 +71,17 @@ export function Budgets() {
             label={categoryLabel(b.category)}
             spent={b.spent}
             limit={b.monthlyLimit}
-            onRemove={() => remove(b.category)}
+            onRemove={() => removeBudget.mutate(b.category)}
           />
         ))}
       </section>
 
-      <form className="card row" onSubmit={save}>
-        <select value={category} onChange={(e) => setCategory(e.target.value)}>
+      <form className={`${card} ${row}`} onSubmit={save}>
+        <select
+          className={field}
+          value={category}
+          onChange={(e) => setCategory(e.target.value)}
+        >
           <option value="">Choose a category</option>
           {categories.data
             ?.filter((c) => !NON_SPENDING_CATEGORIES.includes(c))
@@ -66,6 +92,7 @@ export function Budgets() {
             ))}
         </select>
         <input
+          className={field}
           type="number"
           min="1"
           step="1"
@@ -73,9 +100,9 @@ export function Budgets() {
           value={limit}
           onChange={(e) => setLimit(e.target.value)}
         />
-        <button className="btn primary" type="submit">
+        <Button variant="primary" type="submit">
           Save budget
-        </button>
+        </Button>
       </form>
     </div>
   );
@@ -93,33 +120,29 @@ function BudgetBar({
   onRemove?: () => void;
 }) {
   const ratio = limit > 0 ? spent / limit : 0;
-  const tone = ratio > 1 ? "over" : ratio > 0.85 ? "near" : "";
+  const tone = ratio > 1 ? "over" : ratio > 0.85 ? "near" : "good";
   return (
-    <div className="budget">
-      <div className="row between">
+    <div className="flex flex-col gap-1.5">
+      <div className={`${row} justify-between`}>
         <strong>{label}</strong>
-        <span className="row small">
+        <span className={`${row} text-13`}>
           <span>
-            {money(spent)} <span className="muted">of {money(limit)}</span>
+            {money(spent)} <span className="text-muted">of {money(limit)}</span>
           </span>
           {onRemove && (
-            <button
-              className="btn small ghost"
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={onRemove}
               aria-label={`Remove ${label} budget`}
             >
               ✕
-            </button>
+            </Button>
           )}
         </span>
       </div>
-      <div className="meter">
-        <div
-          className={`meter-fill ${tone}`}
-          style={{ width: `${Math.min(100, ratio * 100)}%` }}
-        />
-      </div>
-      <div className="muted small">
+      <Meter percent={Math.min(100, ratio * 100)} tone={tone} />
+      <div className="text-13 text-muted">
         {ratio > 1
           ? `${money(spent - limit)} over`
           : `${money(limit - spent)} left`}

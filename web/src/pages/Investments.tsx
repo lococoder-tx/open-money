@@ -1,11 +1,22 @@
-import type { Holding } from "@rocket/shared";
-import { useApi } from "../api.ts";
+import { useQuery } from "@tanstack/react-query";
+import {
+  card,
+  cardFlush,
+  errorText,
+  pageTitle,
+  stack,
+  table,
+  Td,
+  Th,
+} from "../components/ui.tsx";
 import { money } from "../format.ts";
+import { queries } from "../queries.ts";
 
 export function Investments() {
-  const { data, error } = useApi<Holding[]>("/holdings");
-  if (error) return <div className="card error-text">{error}</div>;
-  if (!data) return <div className="muted">Loading…</div>;
+  const { data, error } = useQuery(queries.holdings);
+  if (error)
+    return <div className={`${card} ${errorText}`}>{error.message}</div>;
+  if (!data) return <div className="text-muted">Loading…</div>;
 
   const total = data.reduce((s, h) => s + h.value, 0);
   const gain = data.reduce(
@@ -14,40 +25,42 @@ export function Investments() {
   );
 
   return (
-    <div className="stack">
-      <h1>Investments</h1>
-      <div className="stats">
-        <div className="card stat">
-          <div className="muted">Total value</div>
-          <div className="stat-value">{money(total)}</div>
+    <div className={stack}>
+      <h1 className={pageTitle}>Investments</h1>
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-4">
+        <div className={card}>
+          <div className="text-muted">Total value</div>
+          <div className="mt-1 text-24 font-bold">{money(total)}</div>
         </div>
-        <div className="card stat">
-          <div className="muted">Unrealized gain</div>
-          <div className={`stat-value ${gain >= 0 ? "positive" : "negative"}`}>
+        <div className={card}>
+          <div className="text-muted">Unrealized gain</div>
+          <div
+            className={`mt-1 text-24 font-bold ${gain >= 0 ? "text-good" : "text-bad"}`}
+          >
             {money(gain)}
           </div>
-          <div className="muted small">
+          <div className="text-13 text-muted">
             Across holdings that report cost basis
           </div>
         </div>
       </div>
-      <section className="card flush">
+      <section className={cardFlush}>
         {data.length === 0 ? (
-          <p className="muted pad">
+          <p className="px-5 py-4 text-muted">
             No holdings. Connect a brokerage or retirement account from
             Accounts.
           </p>
         ) : (
-          <table>
+          <table className={table}>
             <thead>
               <tr>
-                <th>Security</th>
-                <th>Account</th>
-                <th className="num">Shares</th>
-                <th className="num">Price</th>
-                <th className="num">Value</th>
-                <th className="num">Gain</th>
-                <th className="num">Weight</th>
+                <Th>Security</Th>
+                <Th>Account</Th>
+                <Th numeric>Shares</Th>
+                <Th numeric>Price</Th>
+                <Th numeric>Value</Th>
+                <Th numeric>Gain</Th>
+                <Th numeric>Weight</Th>
               </tr>
             </thead>
             <tbody>
@@ -55,28 +68,31 @@ export function Investments() {
                 const g = h.costBasis == null ? null : h.value - h.costBasis;
                 return (
                   <tr key={`${h.accountId}:${h.securityId}`}>
-                    <td>
+                    <Td>
                       {h.ticker && <strong>{h.ticker} </strong>}
-                      <span className="muted">{h.name}</span>
-                    </td>
-                    <td className="muted">{h.accountName}</td>
-                    <td className="num">
+                      <span className="text-muted">{h.name}</span>
+                    </Td>
+                    <Td className="text-muted">{h.accountName}</Td>
+                    <Td numeric>
                       {h.quantity.toLocaleString(undefined, {
                         maximumFractionDigits: 4,
                       })}
-                    </td>
-                    <td className="num">{money(h.price)}</td>
-                    <td className="num">{money(h.value)}</td>
-                    <td
-                      className={`num ${g == null ? "" : g >= 0 ? "positive" : "negative"}`}
+                    </Td>
+                    <Td numeric>{money(h.price)}</Td>
+                    <Td numeric>{money(h.value)}</Td>
+                    <Td
+                      numeric
+                      className={
+                        g == null ? "" : g >= 0 ? "text-good" : "text-bad"
+                      }
                     >
                       {money(g)}
-                    </td>
-                    <td className="num">
+                    </Td>
+                    <Td numeric>
                       {total > 0
                         ? `${((h.value / total) * 100).toFixed(1)}%`
                         : "—"}
-                    </td>
+                    </Td>
                   </tr>
                 );
               })}

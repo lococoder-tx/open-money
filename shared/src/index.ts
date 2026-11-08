@@ -135,10 +135,10 @@ export interface Summary {
   netWorth: number;
   assets: number;
   liabilities: number;
-  monthSpending: number;
-  lastMonthSpending: number;
-  monthIncome: number;
+  /** Spending per calendar day, index 0 being the 1st. This month stops at today. */
+  dailySpending: { thisMonth: number[]; lastMonth: number[] };
   spendingByCategory: CategoryAmount[];
   netWorthHistory: { date: ISODate; value: number }[];
   upcoming: RecurringStream[];
+  recentTransactions: Transaction[];
 }

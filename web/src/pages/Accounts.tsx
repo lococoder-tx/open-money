@@ -1,8 +1,20 @@
-import { useContext, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Account, AccountType, Institution } from "@rocket/shared";
-import { api, DataVersion, useApi } from "../api.ts";
+import { api } from "../api.ts";
 import { ConnectButton } from "../components/PlaidLink.tsx";
+import {
+  Button,
+  card,
+  cardTitle,
+  errorText,
+  pageTitle,
+  row,
+  stack,
+  table,
+  Td,
+} from "../components/ui.tsx";
 import { money } from "../format.ts";
+import { queries } from "../queries.ts";
 
 const typeLabels: Record<AccountType, string> = {
   depository: "Cash",
@@ -13,27 +25,27 @@ const typeLabels: Record<AccountType, string> = {
 };
 
 export function Accounts() {
-  const institutions = useApi<Institution[]>("/institutions");
-  const accounts = useApi<Account[]>("/accounts");
+  const institutions = useQuery(queries.institutions);
+  const accounts = useQuery(queries.accounts);
 
   return (
-    <div className="stack">
-      <div className="row between">
-        <h1>Accounts</h1>
-        <div className="row">
+    <div className={stack}>
+      <div className={`${row} justify-between`}>
+        <h1 className={pageTitle}>Accounts</h1>
+        <div className={row}>
           <ConnectButton target={{ kind: "banking" }}>
             + Bank or card
           </ConnectButton>
-          <ConnectButton target={{ kind: "investments" }} className="btn">
+          <ConnectButton target={{ kind: "investments" }} variant="default">
             + Investments
           </ConnectButton>
         </div>
       </div>
       {institutions.error && (
-        <div className="error-text">{institutions.error}</div>
+        <div className={errorText}>{institutions.error.message}</div>
       )}
       {institutions.data?.length === 0 && (
-        <p className="muted">No connected institutions yet.</p>
+        <p className="my-[1em] text-muted">No connected institutions yet.</p>
       )}
       {institutions.data?.map((inst) => (
         <InstitutionCard
@@ -55,18 +67,19 @@ function InstitutionCard({
   institution: Institution;
   accounts: Account[];
 }) {
-  const { bump } = useContext(DataVersion);
-  const [busy, setBusy] = useState(false);
-
-  const run = async (fn: () => Promise<unknown>) => {
-    setBusy(true);
-    try {
-      await fn();
-      bump();
-    } finally {
-      setBusy(false);
-    }
-  };
+  const queryClient = useQueryClient();
+  const invalidateAll = () => queryClient.invalidateQueries();
+  const sync = useMutation({
+    mutationFn: () =>
+      api(`/institutions/${institution.itemId}/sync`, { method: "POST" }),
+    onSuccess: invalidateAll,
+  });
+  const disconnect = useMutation({
+    mutationFn: () =>
+      api(`/institutions/${institution.itemId}`, { method: "DELETE" }),
+    onSuccess: invalidateAll,
+  });
+  const busy = sync.isPending || disconnect.isPending;
 
   const remove = () => {
     if (
@@ -74,18 +87,16 @@ function InstitutionCard({
         `Disconnect ${institution.name}? Its accounts and history will be deleted.`,
       )
     ) {
-      void run(() =>
-        api(`/institutions/${institution.itemId}`, { method: "DELETE" }),
-      );
+      disconnect.mutate();
     }
   };
 
   return (
-    <section className="card">
-      <div className="row between">
+    <section className={card}>
+      <div className={`${row} justify-between`}>
         <div>
-          <h2>{institution.name}</h2>
-          <div className="muted small">
+          <h2 className={`${cardTitle} mb-3`}>{institution.name}</h2>
+          <div className="text-13 text-muted">
             {institution.lastSyncedAt
               ? `Synced ${new Date(institution.lastSyncedAt).toLocaleString()}`
               : "Never synced"}
@@ -93,42 +104,33 @@ function InstitutionCard({
             {institution.products.join(", ") || "pending"}
           </div>
         </div>
-        <div className="row">
+        <div className={row}>
           {institution.status === "login_required" && (
             <ConnectButton target={{ itemId: institution.itemId }}>
               Reconnect
             </ConnectButton>
           )}
-          <button
-            className="btn"
-            disabled={busy}
-            onClick={() =>
-              run(() =>
-                api(`/institutions/${institution.itemId}/sync`, {
-                  method: "POST",
-                }),
-              )
-            }
-          >
+          <Button disabled={busy} onClick={() => sync.mutate()}>
             {busy ? "…" : "Sync"}
-          </button>
-          <button className="btn danger" disabled={busy} onClick={remove}>
+          </Button>
+          <Button variant="danger" disabled={busy} onClick={remove}>
             Remove
-          </button>
+          </Button>
         </div>
       </div>
       {institution.status !== "ok" && (
-        <p className="error-text">{institution.error}</p>
+        <p className={`my-[1em] ${errorText}`}>{institution.error}</p>
       )}
-      <table>
+      <table className={table}>
         <tbody>
           {accounts.map((a) => (
             <tr key={a.id}>
-              <td>
-                {a.name} {a.mask && <span className="muted">••{a.mask}</span>}
-              </td>
-              <td className="muted">{typeLabels[a.type]}</td>
-              <td className="num">{money(a.currentBalance, a.currency)}</td>
+              <Td>
+                {a.name}{" "}
+                {a.mask && <span className="text-muted">••{a.mask}</span>}
+              </Td>
+              <Td className="text-muted">{typeLabels[a.type]}</Td>
+              <Td numeric>{money(a.currentBalance, a.currency)}</Td>
             </tr>
           ))}
         </tbody>

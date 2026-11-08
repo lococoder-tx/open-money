@@ -6,7 +6,7 @@ TypeScript across the stack:
 
 - `shared/` holds the API types that both sides import.
 - `server/` is Express 5 with the Plaid Node SDK, and SQLite through Drizzle ORM and `better-sqlite3`. Plaid access tokens are encrypted with AES-256-GCM before they are stored.
-- `web/` is React 19 with Vite, React Router, Recharts, and `react-plaid-link`.
+- `web/` is React 19 with Vite, TanStack Router (file-based routes in `web/src/routes`), TanStack Query (`web/src/queries.ts`), Tailwind CSS v4, Recharts, and `react-plaid-link`.
 
 ## Setup
 

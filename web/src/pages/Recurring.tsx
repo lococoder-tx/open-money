@@ -1,7 +1,23 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import type { RecurringFrequency, RecurringStream } from "@rocket/shared";
-import { api, useApi } from "../api.ts";
+import { api } from "../api.ts";
+import {
+  Button,
+  card,
+  cardFlush,
+  cardTitle,
+  errorText,
+  field,
+  pageTitle,
+  row,
+  stack,
+  table,
+  Td,
+  Th,
+} from "../components/ui.tsx";
 import { money, shortDate } from "../format.ts";
+import { queries } from "../queries.ts";
 
 const FREQUENCIES: Record<
   RecurringFrequency,
@@ -16,11 +32,22 @@ const FREQUENCIES: Record<
 };
 
 export function Recurring() {
-  const { data, error, reload } = useApi<RecurringStream[]>("/recurring");
+  const { data, error } = useQuery(queries.recurring);
+  const queryClient = useQueryClient();
+  const toggleHidden = useMutation({
+    mutationFn: (r: RecurringStream) =>
+      api(`/recurring/${r.id}`, {
+        method: "PATCH",
+        body: { hidden: !r.hidden },
+      }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: queries.recurring.queryKey }),
+  });
   const [showHidden, setShowHidden] = useState(false);
 
-  if (error) return <div className="card error-text">{error}</div>;
-  if (!data) return <div className="muted">Loading…</div>;
+  if (error)
+    return <div className={`${card} ${errorText}`}>{error.message}</div>;
+  if (!data) return <div className="text-muted">Loading…</div>;
 
   const visible = data.filter((r) => r.isActive && (showHidden || !r.hidden));
   const outflows = visible.filter((r) => r.direction === "outflow");
@@ -32,20 +59,13 @@ export function Recurring() {
       0,
     );
 
-  const toggleHidden = async (r: RecurringStream) => {
-    await api(`/recurring/${r.id}`, {
-      method: "PATCH",
-      body: { hidden: !r.hidden },
-    });
-    reload();
-  };
-
   return (
-    <div className="stack">
-      <div className="row between">
-        <h1>Recurring</h1>
-        <label className="row small">
+    <div className={stack}>
+      <div className={`${row} justify-between`}>
+        <h1 className={pageTitle}>Recurring</h1>
+        <label className={`${row} text-13`}>
           <input
+            className={`${field} m-[3px_3px_3px_4px]`}
             type="checkbox"
             checked={showHidden}
             onChange={(e) => setShowHidden(e.target.checked)}
@@ -53,22 +73,22 @@ export function Recurring() {
           Show hidden
         </label>
       </div>
-      <div className="card stat">
-        <div className="muted">Subscriptions & bills, per month</div>
-        <div className="stat-value">{money(monthlyCost)}</div>
-        <div className="muted small">
+      <div className={card}>
+        <div className="text-muted">Subscriptions & bills, per month</div>
+        <div className="mt-1 text-24 font-bold">{money(monthlyCost)}</div>
+        <div className="text-13 text-muted">
           {outflows.filter((r) => !r.hidden).length} active charges
         </div>
       </div>
       <StreamTable
         title="Subscriptions & bills"
         streams={outflows}
-        onToggle={toggleHidden}
+        onToggle={toggleHidden.mutate}
       />
       <StreamTable
         title="Recurring income"
         streams={inflows}
-        onToggle={toggleHidden}
+        onToggle={toggleHidden.mutate}
       />
     </div>
   );
@@ -84,40 +104,40 @@ function StreamTable({
   onToggle: (r: RecurringStream) => void;
 }) {
   return (
-    <section className="card flush">
-      <h2 className="pad">{title}</h2>
+    <section className={cardFlush}>
+      <h2 className={`${cardTitle} px-5 py-4`}>{title}</h2>
       {streams.length === 0 ? (
-        <p className="muted pad">
+        <p className="px-5 py-4 text-muted">
           Nothing detected yet. Plaid needs a few months of history to spot
           patterns.
         </p>
       ) : (
-        <table>
+        <table className={table}>
           <thead>
             <tr>
-              <th>Name</th>
-              <th>Frequency</th>
-              <th>Last</th>
-              <th>Next</th>
-              <th className="num">Amount</th>
-              <th />
+              <Th>Name</Th>
+              <Th>Frequency</Th>
+              <Th>Last</Th>
+              <Th>Next</Th>
+              <Th numeric>Amount</Th>
+              <Th />
             </tr>
           </thead>
           <tbody>
             {streams.map((r) => (
-              <tr key={r.id} className={r.hidden ? "dimmed" : ""}>
-                <td>{r.merchantName ?? r.name}</td>
-                <td className="muted">{FREQUENCIES[r.frequency].label}</td>
-                <td className="muted">{shortDate(r.lastDate)}</td>
-                <td className="muted">
+              <tr key={r.id} className={r.hidden ? "opacity-50" : ""}>
+                <Td>{r.merchantName ?? r.name}</Td>
+                <Td className="text-muted">{FREQUENCIES[r.frequency].label}</Td>
+                <Td className="text-muted">{shortDate(r.lastDate)}</Td>
+                <Td className="text-muted">
                   {r.nextDate ? shortDate(r.nextDate) : "—"}
-                </td>
-                <td className="num">{money(r.lastAmount)}</td>
-                <td className="num">
-                  <button className="btn small" onClick={() => onToggle(r)}>
+                </Td>
+                <Td numeric>{money(r.lastAmount)}</Td>
+                <Td numeric>
+                  <Button size="sm" onClick={() => onToggle(r)}>
                     {r.hidden ? "Unhide" : "Hide"}
-                  </button>
-                </td>
+                  </Button>
+                </Td>
               </tr>
             ))}
           </tbody>
