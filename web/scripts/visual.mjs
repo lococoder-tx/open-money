@@ -26,6 +26,18 @@ const states = [
   { name: "budgets", path: "/budgets", ready: "text=Save budget" },
   { name: "investments", path: "/investments", ready: "text=Total value" },
   { name: "accounts", path: "/accounts", ready: "section h2" },
+  {
+    name: "hover-nav",
+    path: "/transactions",
+    ready: "tbody tr",
+    act: (page) => page.locator("aside nav a").nth(3).hover(),
+  },
+  {
+    name: "hover-select",
+    path: "/transactions",
+    ready: "tbody tr",
+    act: (page) => page.locator("tbody select").first().hover(),
+  },
   { name: "dashboard-rich", path: "/", ready: "text=Recent transactions", setup: stubRichSummary },
   {
     name: "recurring-streams",
