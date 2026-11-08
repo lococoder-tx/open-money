@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "typecheck": "tsc -p ."
+    "typecheck": "tsc -p .",
+    "visual": "node scripts/visual.mjs",
+    "behavior": "node scripts/behavior.mjs"
   },
   "dependencies": {
     "@rocket/shared": "*",
@@ -19,6 +21,9 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
+    "pixelmatch": "^8.0.0",
+    "playwright": "^1.65.0",
+    "pngjs": "^7.0.0",
     "vite": "^8.3.5"
   }
 }
