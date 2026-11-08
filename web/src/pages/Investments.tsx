@@ -8,8 +8,10 @@ export function Investments() {
   if (!data) return <div className="muted">Loading…</div>;
 
   const total = data.reduce((s, h) => s + h.value, 0);
-  const withBasis = data.filter((h) => h.costBasis != null);
-  const gain = withBasis.reduce((s, h) => s + h.value - h.costBasis!, 0);
+  const gain = data.reduce(
+    (s, h) => (h.costBasis == null ? s : s + h.value - h.costBasis),
+    0,
+  );
 
   return (
     <div className="stack">

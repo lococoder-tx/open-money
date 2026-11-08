@@ -22,7 +22,3 @@ export function shortDate(iso: string): string {
     day: "numeric",
   });
 }
-
-export function frequencyLabel(frequency: string): string {
-  return categoryLabel(frequency.replace("SEMI_MONTHLY", "TWICE_MONTHLY"));
-}

@@ -6,7 +6,13 @@ import type {
   Transaction,
   TransactionStream,
 } from "plaid";
-import type { AccountType, Institution } from "@rocket/shared";
+import {
+  ACCOUNT_TYPES,
+  RECURRING_FREQUENCIES,
+  type AccountType,
+  type Institution,
+  type RecurringFrequency,
+} from "@rocket/shared";
 import { and, eq, inArray, notInArray } from "drizzle-orm";
 import { decrypt, encrypt } from "./crypto.ts";
 import { chunks, db, excluded } from "./db.ts";
@@ -23,10 +29,13 @@ import {
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
-export async function linkItem(
-  publicToken: string,
-  institutionName: string,
-): Promise<Institution> {
+export async function linkItem({
+  publicToken,
+  institutionName,
+}: {
+  publicToken: string;
+  institutionName: string;
+}): Promise<Institution> {
   const { data } = await plaid.itemPublicTokenExchange({
     public_token: publicToken,
   });
@@ -189,23 +198,26 @@ async function fetchHoldings(
   return { holdings: data.holdings, securities: data.securities };
 }
 
-const knownAccountTypes = new Set<string>([
-  "depository",
-  "credit",
-  "loan",
-  "investment",
-]);
+function isAccountType(type: string): type is AccountType {
+  return ACCOUNT_TYPES.some((t) => t === type);
+}
+
+function isRecurringFrequency(
+  frequency: string,
+): frequency is RecurringFrequency {
+  return RECURRING_FREQUENCIES.some((f) => f === frequency);
+}
 
 function writeAccounts(tx: Tx, itemId: string, plaidAccounts: AccountBase[]) {
   if (plaidAccounts.length === 0) return;
   tx.insert(accounts)
     .values(
-      plaidAccounts.map((a) => ({
+      plaidAccounts.map((a): typeof accounts.$inferInsert => ({
         id: a.account_id,
         itemId,
         name: a.official_name ?? a.name,
         mask: a.mask,
-        type: (knownAccountTypes.has(a.type) ? a.type : "other") as AccountType,
+        type: isAccountType(a.type) ? a.type : "other",
         subtype: a.subtype ?? null,
         currentBalance: a.balances.current,
         availableBalance: a.balances.available,
@@ -252,18 +264,20 @@ function writeTransactions(
   itemId: string,
   { added, modified, removed, cursor }: TransactionChanges,
 ) {
-  const rows = [...added, ...modified].map((t) => ({
-    id: t.transaction_id,
-    accountId: t.account_id,
-    amount: t.amount,
-    currency: t.iso_currency_code ?? "USD",
-    date: t.date,
-    name: t.name,
-    merchantName: t.merchant_name ?? null,
-    logoUrl: t.logo_url ?? null,
-    plaidCategory: t.personal_finance_category?.primary ?? "OTHER",
-    pending: t.pending,
-  }));
+  const rows = [...added, ...modified].map(
+    (t): typeof transactions.$inferInsert => ({
+      id: t.transaction_id,
+      accountId: t.account_id,
+      amount: t.amount,
+      currency: t.iso_currency_code ?? "USD",
+      date: t.date,
+      name: t.name,
+      merchantName: t.merchant_name ?? null,
+      logoUrl: t.logo_url ?? null,
+      plaidCategory: t.personal_finance_category?.primary ?? "OTHER",
+      pending: t.pending,
+    }),
+  );
   for (const chunk of chunks(rows)) {
     tx.insert(transactions)
       .values(chunk)
@@ -294,16 +308,15 @@ function writeTransactions(
 
 function writeRecurring(tx: Tx, itemId: string, streams: TransactionStream[]) {
   // Plaid reports inflow amounts as negative; store magnitudes and carry the sign in `direction`.
-  const rows = streams.map((s) => ({
+  const rows = streams.map((s): typeof recurring.$inferInsert => ({
     id: s.stream_id,
     itemId,
     accountId: s.account_id,
-    direction: (s.average_amount.amount! < 0 ? "inflow" : "outflow") as
-      "inflow" | "outflow",
+    direction: (s.average_amount.amount ?? 0) < 0 ? "inflow" : "outflow",
     name: s.description,
     merchantName: s.merchant_name ?? null,
     category: s.personal_finance_category?.primary ?? "OTHER",
-    frequency: s.frequency,
+    frequency: isRecurringFrequency(s.frequency) ? s.frequency : "UNKNOWN",
     averageAmount: Math.abs(s.average_amount.amount ?? 0),
     lastAmount: Math.abs(s.last_amount.amount ?? 0),
     lastDate: s.last_date,
@@ -360,7 +373,7 @@ function writeHoldings(
       ),
     )
     .run();
-  const rows = plaidHoldings.map((h) => {
+  const rows = plaidHoldings.map((h): typeof holdings.$inferInsert => {
     const security = securityById.get(h.security_id);
     return {
       accountId: h.account_id,

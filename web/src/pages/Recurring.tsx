@@ -1,14 +1,18 @@
 import { useState } from "react";
-import type { RecurringStream } from "@rocket/shared";
+import type { RecurringFrequency, RecurringStream } from "@rocket/shared";
 import { api, useApi } from "../api.ts";
-import { frequencyLabel, money, shortDate } from "../format.ts";
+import { money, shortDate } from "../format.ts";
 
-const MONTHLY_FACTOR: Record<string, number> = {
-  WEEKLY: 52 / 12,
-  BIWEEKLY: 26 / 12,
-  SEMI_MONTHLY: 2,
-  MONTHLY: 1,
-  ANNUALLY: 1 / 12,
+const FREQUENCIES: Record<
+  RecurringFrequency,
+  { label: string; perMonth: number }
+> = {
+  UNKNOWN: { label: "Unknown", perMonth: 0 },
+  WEEKLY: { label: "Weekly", perMonth: 52 / 12 },
+  BIWEEKLY: { label: "Biweekly", perMonth: 26 / 12 },
+  SEMI_MONTHLY: { label: "Twice monthly", perMonth: 2 },
+  MONTHLY: { label: "Monthly", perMonth: 1 },
+  ANNUALLY: { label: "Annually", perMonth: 1 / 12 },
 };
 
 export function Recurring() {
@@ -24,7 +28,7 @@ export function Recurring() {
   const monthlyCost = outflows
     .filter((r) => !r.hidden)
     .reduce(
-      (sum, r) => sum + r.averageAmount * (MONTHLY_FACTOR[r.frequency] ?? 0),
+      (sum, r) => sum + r.averageAmount * FREQUENCIES[r.frequency].perMonth,
       0,
     );
 
@@ -103,7 +107,7 @@ function StreamTable({
             {streams.map((r) => (
               <tr key={r.id} className={r.hidden ? "dimmed" : ""}>
                 <td>{r.merchantName ?? r.name}</td>
-                <td className="muted">{frequencyLabel(r.frequency)}</td>
+                <td className="muted">{FREQUENCIES[r.frequency].label}</td>
                 <td className="muted">{shortDate(r.lastDate)}</td>
                 <td className="muted">
                   {r.nextDate ? shortDate(r.nextDate) : "—"}

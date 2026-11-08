@@ -1,5 +1,6 @@
 import path from "node:path";
 import express, { type ErrorRequestHandler } from "express";
+import { LINK_KINDS, type LinkTarget } from "@rocket/shared";
 import { z } from "zod";
 import { env, ROOT_DIR } from "./env.ts";
 import { createLinkToken, toPlaidError } from "./plaid.ts";
@@ -19,9 +20,9 @@ app.use(express.json());
 const api = express.Router();
 
 api.post("/link/token", async (req, res) => {
-  const body = z
+  const body: LinkTarget = z
     .union([
-      z.object({ kind: z.enum(["banking", "investments"]) }),
+      z.object({ kind: z.enum(LINK_KINDS) }),
       z.object({ itemId: z.string() }),
     ])
     .parse(req.body);
@@ -40,7 +41,7 @@ api.post("/link/exchange", async (req, res) => {
       institutionName: z.string().default("Unknown institution"),
     })
     .parse(req.body);
-  res.json(await linkItem(body.publicToken, body.institutionName));
+  res.json(await linkItem(body));
 });
 
 api.get("/institutions", (_req, res) => {

@@ -3,8 +3,8 @@ import {
   usePlaidLink,
   type PlaidLinkOnSuccessMetadata,
 } from "react-plaid-link";
-import type { Institution, LinkKind } from "@rocket/shared";
-import { api, DataVersion } from "../api.ts";
+import type { Institution, LinkTarget } from "@rocket/shared";
+import { api, DataVersion, errorMessage } from "../api.ts";
 
 /**
  * OAuth institutions (Fidelity, most big banks) leave the app and come back to /oauth.
@@ -16,9 +16,27 @@ interface PendingLink {
 }
 const PENDING_KEY = "plaid-pending-link";
 
+function isPendingLink(value: unknown): value is PendingLink {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "linkToken" in value &&
+    typeof value.linkToken === "string" &&
+    "itemId" in value &&
+    (value.itemId === null || typeof value.itemId === "string")
+  );
+}
+
+/** Stored by an earlier page load, so it may be stale or hand-edited. */
 export function readPendingLink(): PendingLink | null {
   const raw = localStorage.getItem(PENDING_KEY);
-  return raw ? (JSON.parse(raw) as PendingLink) : null;
+  if (!raw) return null;
+  try {
+    const value: unknown = JSON.parse(raw);
+    return isPendingLink(value) ? value : null;
+  } catch {
+    return null;
+  }
 }
 
 async function completeLink(
@@ -53,7 +71,7 @@ export function usePlaidFlow(
           bump();
           opts.onFinish();
         },
-        (err: Error) => opts.onFinish(err.message),
+        (err: unknown) => opts.onFinish(errorMessage(err)),
       );
     },
     onExit: (err) => {
@@ -67,14 +85,12 @@ export function usePlaidFlow(
   }, [pending, ready, open]);
 }
 
-type Target = { kind: LinkKind } | { itemId: string };
-
 export function ConnectButton({
   target,
   children,
   className,
 }: {
-  target: Target;
+  target: LinkTarget;
   children: ReactNode;
   className?: string;
 }) {
@@ -105,7 +121,7 @@ export function ConnectButton({
       localStorage.setItem(PENDING_KEY, JSON.stringify(next));
       setPending(next);
     } catch (err) {
-      setError((err as Error).message);
+      setError(errorMessage(err));
       setBusy(false);
     }
   };
